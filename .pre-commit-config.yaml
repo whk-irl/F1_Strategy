@@ -1,0 +1,70 @@
+repos:
+  # ---------------------------------------------------------------------------
+  # General file hygiene
+  # ---------------------------------------------------------------------------
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-toml
+      - id: check-json
+      - id: check-merge-conflict
+      - id: detect-private-key
+      - id: check-added-large-files
+        args: ["--maxkb=1000"]
+
+  # ---------------------------------------------------------------------------
+  # Conventional Commits message format
+  # ---------------------------------------------------------------------------
+  - repo: https://github.com/compilerla/conventional-pre-commit
+    rev: v3.2.0
+    hooks:
+      - id: conventional-pre-commit
+        stages: [commit-msg]
+        args: [feat, fix, chore, docs, refactor, test, ci, perf, build]
+
+  # ---------------------------------------------------------------------------
+  # Python — ruff (lint + format)
+  # ---------------------------------------------------------------------------
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.4.4
+    hooks:
+      - id: ruff
+        args: [--fix]
+      - id: ruff-format
+
+  # ---------------------------------------------------------------------------
+  # Python — mypy (type checking on services/ and ml/)
+  # ---------------------------------------------------------------------------
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.9.0
+    hooks:
+      - id: mypy
+        files: ^(services|ml)/
+        additional_dependencies:
+          - pydantic>=2.6
+          - pydantic-settings>=2.2
+          - pandas-stubs>=2.2
+          - boto3-stubs[s3]>=1.34
+          - types-tqdm
+
+  # ---------------------------------------------------------------------------
+  # Notebooks — strip outputs before committing
+  # ---------------------------------------------------------------------------
+  - repo: https://github.com/kynan/nbstripout
+    rev: 0.7.1
+    hooks:
+      - id: nbstripout
+        files: \.ipynb$
+
+  # ---------------------------------------------------------------------------
+  # Security — check for secrets / credentials
+  # ---------------------------------------------------------------------------
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.4.0
+    hooks:
+      - id: detect-secrets
+        args: ["--baseline", ".secrets.baseline"]
+        exclude: poetry\.lock|uv\.lock
