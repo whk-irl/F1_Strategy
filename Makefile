@@ -117,6 +117,58 @@ submit-train-policy: kubeconfig-update  ## Submit GPU strategy policy training t
 		--server $(ARGO_SERVER) --watch
 
 # ---------------------------------------------------------------------------
+# Terraform — AWS infrastructure
+# Phase 1: S3 + ECR (run this first to start ingesting data)
+# Phase 2: VPC + EKS + IRSA (run when ready to train on GPU)
+# ---------------------------------------------------------------------------
+TF_DIR        := infra/terraform/aws
+TF_BOOTSTRAP  := infra/terraform/aws/bootstrap
+
+tf-bootstrap:  ## (One-time) Create S3 state bucket + DynamoDB lock table
+	terraform -chdir=$(TF_BOOTSTRAP) init
+	terraform -chdir=$(TF_BOOTSTRAP) apply -auto-approve
+
+tf-init:  ## Initialise Terraform with remote S3 backend (run after tf-bootstrap)
+	terraform -chdir=$(TF_DIR) init
+
+tf-plan-phase1:  ## Preview Phase 1 changes (S3 + ECR only)
+	terraform -chdir=$(TF_DIR) plan \
+		-target=aws_s3_bucket.data_lake \
+		-target=aws_s3_bucket_versioning.data_lake \
+		-target=aws_s3_bucket_server_side_encryption_configuration.data_lake \
+		-target=aws_s3_bucket_public_access_block.data_lake \
+		-target=aws_s3_bucket_lifecycle_configuration.data_lake \
+		-target=aws_ecr_repository.training \
+		-target=aws_ecr_lifecycle_policy.training
+
+tf-apply-phase1:  ## Apply Phase 1 (S3 + ECR) — needed before first ingestion run
+	terraform -chdir=$(TF_DIR) apply \
+		-target=aws_s3_bucket.data_lake \
+		-target=aws_s3_bucket_versioning.data_lake \
+		-target=aws_s3_bucket_server_side_encryption_configuration.data_lake \
+		-target=aws_s3_bucket_public_access_block.data_lake \
+		-target=aws_s3_bucket_lifecycle_configuration.data_lake \
+		-target=aws_ecr_repository.training \
+		-target=aws_ecr_lifecycle_policy.training
+
+tf-apply-phase2:  ## Apply Phase 2 (VPC + EKS + IRSA) — needed for GPU training
+	terraform -chdir=$(TF_DIR) apply
+
+tf-output:  ## Show Terraform outputs (bucket name, ECR registry, kubeconfig cmd)
+	terraform -chdir=$(TF_DIR) output
+
+tf-destroy-eks:  ## Destroy EKS + VPC only (keeps S3 data intact)
+	terraform -chdir=$(TF_DIR) destroy \
+		-target=module.eks \
+		-target=module.vpc \
+		-target=kubernetes_namespace.pitwall \
+		-target=kubernetes_service_account.training \
+		-target=kubernetes_service_account.ingestion
+
+tf-destroy:  ## DANGER: destroy all cloud resources including S3 data
+	terraform -chdir=$(TF_DIR) destroy
+
+# ---------------------------------------------------------------------------
 # Frontend
 # ---------------------------------------------------------------------------
 demo:  ## Launch Streamlit demo (http://localhost:8501)

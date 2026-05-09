@@ -1,0 +1,25 @@
+# Copy to terraform.tfvars and adjust.
+# terraform.tfvars is gitignored; this example file is committed.
+
+aws_region   = "us-east-1"
+project_name = "pitwall-ai"
+environment  = "prod"
+
+# S3 lifecycle
+bronze_retention_days = 90
+
+# EKS
+eks_cluster_version        = "1.29"
+general_node_instance_type = "t3.large"
+general_node_desired       = 2
+general_node_min           = 1
+general_node_max           = 4
+
+# GPU nodes — keep at max=2 for safety; desired starts at 0.
+gpu_node_instance_type = "g4dn.xlarge"
+gpu_node_max           = 2
+
+tags = {
+  Owner   = "your-name"
+  Purpose = "portfolio-ml"
+}

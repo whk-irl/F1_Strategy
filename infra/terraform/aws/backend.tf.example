@@ -1,0 +1,15 @@
+# Copy this file to backend.tf and fill in the values from the bootstrap output.
+# backend.tf is gitignored because it contains your account ID.
+#
+# Run bootstrap first:
+#   terraform -chdir=infra/terraform/aws/bootstrap apply -auto-approve
+
+terraform {
+  backend "s3" {
+    bucket         = "pitwall-ai-tfstate-<YOUR-ACCOUNT-ID>"
+    key            = "pitwall-ai/terraform.tfstate"
+    region         = "us-east-1"
+    dynamodb_table = "pitwall-ai-tflock"
+    encrypt        = true
+  }
+}
