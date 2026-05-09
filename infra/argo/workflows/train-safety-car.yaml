@@ -1,0 +1,62 @@
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: train-safety-car
+  namespace: pitwall
+  labels:
+    app: pitwall
+    component: training
+    model: safety-car
+spec:
+  entrypoint: train
+  serviceAccountName: pitwall-training
+  arguments:
+    parameters:
+      - name: image
+        value: "REPLACE_WITH_ECR_URI/pitwall-safety-car:latest"
+      - name: aws_region
+        value: "us-east-1"
+      - name: s3_bucket
+        value: "pitwall-ai-prod"
+      - name: mlflow_experiment
+        value: "safety-car"
+      - name: training_seasons
+        value: "2021,2022,2023,2024"
+
+  templates:
+    - name: train
+      inputs:
+        parameters:
+          - name: image
+          - name: aws_region
+          - name: s3_bucket
+          - name: mlflow_experiment
+          - name: training_seasons
+      container:
+        image: "{{inputs.parameters.image}}"
+        imagePullPolicy: Always
+        command: [python, -m, ml.models.safety_car.train]
+        args:
+          - "--seasons"
+          - "{{inputs.parameters.training_seasons}}"
+        resources:
+          requests:
+            memory: "4Gi"
+            cpu: "2"
+          limits:
+            memory: "4Gi"
+            cpu: "2"
+        env:
+          - name: PITWALL_STORAGE_BACKEND
+            value: s3
+          - name: PITWALL_AWS_REGION
+            value: "{{inputs.parameters.aws_region}}"
+          - name: PITWALL_AWS_S3_BUCKET
+            value: "{{inputs.parameters.s3_bucket}}"
+          - name: PITWALL_MLFLOW_TRACKING_URI
+            valueFrom:
+              secretKeyRef:
+                name: pitwall-secrets
+                key: mlflow-tracking-uri
+          - name: PITWALL_MLFLOW_EXPERIMENT_NAME
+            value: "{{inputs.parameters.mlflow_experiment}}"

@@ -1,0 +1,81 @@
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: train-strategy-policy
+  namespace: pitwall
+  labels:
+    app: pitwall
+    component: training
+    model: strategy-policy
+spec:
+  entrypoint: train
+  serviceAccountName: pitwall-training
+  arguments:
+    parameters:
+      - name: image
+        value: "REPLACE_WITH_ECR_URI/pitwall-strategy-policy:latest"
+      - name: aws_region
+        value: "us-east-1"
+      - name: s3_bucket
+        value: "pitwall-ai-prod"
+      - name: mlflow_experiment
+        value: "strategy-policy"
+      - name: total_timesteps
+        value: "1000000"
+
+  templates:
+    - name: train
+      inputs:
+        parameters:
+          - name: image
+          - name: aws_region
+          - name: s3_bucket
+          - name: mlflow_experiment
+          - name: total_timesteps
+      container:
+        image: "{{inputs.parameters.image}}"
+        imagePullPolicy: Always
+        command: [python, -m, ml.models.strategy_policy.train]
+        args:
+          - "--total-timesteps"
+          - "{{inputs.parameters.total_timesteps}}"
+        resources:
+          requests:
+            memory: "16Gi"
+            cpu: "4"
+            nvidia.com/gpu: "1"
+          limits:
+            memory: "16Gi"
+            nvidia.com/gpu: "1"
+        env:
+          - name: PITWALL_STORAGE_BACKEND
+            value: s3
+          - name: PITWALL_AWS_REGION
+            value: "{{inputs.parameters.aws_region}}"
+          - name: PITWALL_AWS_S3_BUCKET
+            value: "{{inputs.parameters.s3_bucket}}"
+          - name: PITWALL_MLFLOW_TRACKING_URI
+            valueFrom:
+              secretKeyRef:
+                name: pitwall-secrets
+                key: mlflow-tracking-uri
+          - name: PITWALL_MLFLOW_EXPERIMENT_NAME
+            value: "{{inputs.parameters.mlflow_experiment}}"
+          - name: NCCL_DEBUG
+            value: "INFO"
+        volumeMounts:
+          # /dev/shm extension prevents PyTorch multiprocessing from OOM-ing.
+          - name: dshm
+            mountPath: /dev/shm
+      # GPU node placement
+      nodeSelector:
+        eks.amazonaws.com/nodegroup: gpu-training
+      tolerations:
+        - key: nvidia.com/gpu
+          operator: Exists
+          effect: NoSchedule
+      volumes:
+        - name: dshm
+          emptyDir:
+            medium: Memory
+            sizeLimit: "8Gi"

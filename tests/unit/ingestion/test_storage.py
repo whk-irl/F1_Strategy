@@ -36,15 +36,30 @@ class TestBuildParquetKey:
 
 
 class TestObjectStorage:
-    def test_bucket_created_when_missing(
+    def test_minio_bucket_created_when_missing(
         self,
         mock_s3: MagicMock,
         settings: "IngestionSettings",  # type: ignore[name-defined]  # noqa: F821
     ) -> None:
+        """MinIO backend auto-creates a missing bucket (dev convenience)."""
         from services.ingestion.storage import ObjectStorage
 
         ObjectStorage(settings)
         mock_s3.create_bucket.assert_called_once_with(Bucket="pitwall-test")
+
+    def test_s3_backend_raises_when_bucket_missing(
+        self,
+        mock_s3: MagicMock,
+        settings: "IngestionSettings",  # type: ignore[name-defined]  # noqa: F821
+    ) -> None:
+        """S3 backend must never auto-create buckets — Terraform owns that."""
+        from services.ingestion.storage import ObjectStorage
+
+        s3_settings = settings.model_copy(
+            update={"storage_backend": "s3", "aws_s3_bucket": "pitwall-prod"}
+        )
+        with pytest.raises(RuntimeError, match="Terraform"):
+            ObjectStorage(s3_settings)
 
     def test_write_parquet_calls_put_object(
         self,

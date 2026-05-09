@@ -63,7 +63,7 @@ def fetch_and_store_bronze(
 
     key = build_parquet_key(settings.bronze_prefix, year, round_number, session)
     storage.write_parquet(raw_df, key)
-    logger.info("Bronze written → s3://%s/%s", settings.minio_bucket, key)
+    logger.info("Bronze written → s3://%s/%s", settings.data_bucket, key)
     return key
 
 
@@ -94,7 +94,7 @@ def transform_to_silver_task(
 
     key = build_parquet_key(settings.silver_prefix, year, round_number, session)
     storage.write_parquet(silver_df, key)
-    logger.info("Silver written → s3://%s/%s  (%d rows)", settings.minio_bucket, key, len(silver_df))
+    logger.info("Silver written → s3://%s/%s  (%d rows)", settings.data_bucket, key, len(silver_df))
     return key
 
 
@@ -127,7 +127,7 @@ def transform_to_gold_task(
 
     key = build_parquet_key(settings.gold_prefix, year, round_number, session)
     storage.write_parquet(gold_df, key)
-    logger.info("Gold written → s3://%s/%s  (%d rows)", settings.minio_bucket, key, len(gold_df))
+    logger.info("Gold written → s3://%s/%s  (%d rows)", settings.data_bucket, key, len(gold_df))
     return key
 
 

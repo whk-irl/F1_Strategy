@@ -1,0 +1,154 @@
+name: Train (Cloud GPU — EKS + Argo)
+
+# Manual trigger only — GPU training is intentional and billed.
+# Never run automatically on push to prevent runaway costs.
+on:
+  workflow_dispatch:
+    inputs:
+      model:
+        description: "Model to train"
+        required: true
+        type: choice
+        options:
+          - tire_degradation
+          - safety_car
+          - strategy_policy
+          - all
+      training_seasons:
+        description: "Comma-separated seasons for supervised models"
+        required: false
+        default: "2021,2022,2023,2024"
+      total_timesteps:
+        description: "PPO timesteps (strategy_policy only)"
+        required: false
+        default: "1000000"
+      image_tag:
+        description: "Docker image tag to build and push"
+        required: false
+        default: "latest"
+
+env:
+  AWS_REGION: us-east-1
+  ECR_REGISTRY: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.us-east-1.amazonaws.com
+  EKS_CLUSTER_NAME: ${{ secrets.EKS_CLUSTER_NAME }}
+  ARGO_SERVER: ${{ secrets.ARGO_SERVER }}
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Build & push Docker images to ECR
+  # ---------------------------------------------------------------------------
+  build-and-push:
+    name: Build & push training images
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write   # for OIDC auth to AWS
+      contents: read
+    outputs:
+      tire_image: ${{ steps.meta.outputs.tire_image }}
+      safety_car_image: ${{ steps.meta.outputs.safety_car_image }}
+      policy_image: ${{ steps.meta.outputs.policy_image }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Log in to ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build & push images
+        id: meta
+        env:
+          TAG: ${{ github.event.inputs.image_tag }}
+        run: |
+          TIRE_IMAGE="$ECR_REGISTRY/pitwall-tire-degradation:$TAG"
+          SC_IMAGE="$ECR_REGISTRY/pitwall-safety-car:$TAG"
+          POLICY_IMAGE="$ECR_REGISTRY/pitwall-strategy-policy:$TAG"
+
+          MODEL="${{ github.event.inputs.model }}"
+
+          build_and_push() {
+            local dockerfile=$1
+            local image=$2
+            docker build -t "$image" -f "$dockerfile" .
+            docker push "$image"
+          }
+
+          if [[ "$MODEL" == "tire_degradation" || "$MODEL" == "all" ]]; then
+            build_and_push ml/models/tire_degradation/Dockerfile "$TIRE_IMAGE"
+          fi
+          if [[ "$MODEL" == "safety_car" || "$MODEL" == "all" ]]; then
+            build_and_push ml/models/safety_car/Dockerfile "$SC_IMAGE"
+          fi
+          if [[ "$MODEL" == "strategy_policy" || "$MODEL" == "all" ]]; then
+            build_and_push ml/models/strategy_policy/Dockerfile "$POLICY_IMAGE"
+          fi
+
+          echo "tire_image=$TIRE_IMAGE"     >> "$GITHUB_OUTPUT"
+          echo "safety_car_image=$SC_IMAGE" >> "$GITHUB_OUTPUT"
+          echo "policy_image=$POLICY_IMAGE" >> "$GITHUB_OUTPUT"
+
+  # ---------------------------------------------------------------------------
+  # Submit Argo Workflow(s) to EKS
+  # ---------------------------------------------------------------------------
+  submit-training:
+    name: Submit Argo Workflow
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Update kubeconfig for EKS
+        run: aws eks update-kubeconfig --name "$EKS_CLUSTER_NAME" --region "$AWS_REGION"
+
+      - name: Install Argo CLI
+        run: |
+          curl -sLO "https://github.com/argoproj/argo-workflows/releases/latest/download/argo-linux-amd64.gz"
+          gunzip argo-linux-amd64.gz
+          chmod +x argo-linux-amd64
+          sudo mv argo-linux-amd64 /usr/local/bin/argo
+
+      - name: Submit tire degradation training
+        if: >
+          github.event.inputs.model == 'tire_degradation' ||
+          github.event.inputs.model == 'all'
+        run: |
+          argo submit --from workflowtemplate/train-tire-degradation \
+            -p image="${{ needs.build-and-push.outputs.tire_image }}" \
+            -p training_seasons="${{ github.event.inputs.training_seasons }}" \
+            --watch --log
+
+      - name: Submit safety-car training
+        if: >
+          github.event.inputs.model == 'safety_car' ||
+          github.event.inputs.model == 'all'
+        run: |
+          argo submit --from workflowtemplate/train-safety-car \
+            -p image="${{ needs.build-and-push.outputs.safety_car_image }}" \
+            -p training_seasons="${{ github.event.inputs.training_seasons }}" \
+            --watch --log
+
+      - name: Submit strategy policy training (GPU)
+        if: >
+          github.event.inputs.model == 'strategy_policy' ||
+          github.event.inputs.model == 'all'
+        run: |
+          argo submit --from workflowtemplate/train-strategy-policy \
+            -p image="${{ needs.build-and-push.outputs.policy_image }}" \
+            -p total_timesteps="${{ github.event.inputs.total_timesteps }}" \
+            --watch --log

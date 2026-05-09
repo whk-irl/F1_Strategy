@@ -22,8 +22,10 @@ dependencies = [
     "pydantic-settings>=2.2",
     # Orchestration
     "prefect>=2.19",
-    # Object storage
+    # Object storage (boto3 for S3/MinIO; s3fs for fsspec-based direct reads)
     "boto3>=1.34",
+    "s3fs>=2024.2",
+    "fsspec>=2024.2",
     # Experiment tracking & model registry
     "mlflow>=2.12",
     # Feature store
