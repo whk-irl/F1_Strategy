@@ -1,0 +1,249 @@
+# =============================================================================
+# Python
+# =============================================================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg
+*.egg-info/
+dist/
+build/
+develop-eggs/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+MANIFEST
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+.env
+.envrc
+
+# Package managers
+poetry.lock          # keep this if you use poetry; remove the # to ignore
+# uv.lock            # uncomment to ignore
+.pdm.toml
+__pypackages__/
+
+# Testing & coverage
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+coverage.xml
+*.cover
+.hypothesis/
+
+# Type checkers & linters
+.mypy_cache/
+.ruff_cache/
+.pyre/
+.pytype/
+
+# =============================================================================
+# Jupyter / notebooks
+# =============================================================================
+.ipynb_checkpoints/
+*/.ipynb_checkpoints/*
+profile_default/
+ipython_config.py
+
+# Strip notebook outputs before committing (use nbstripout or pre-commit hook).
+# Uncomment the next line to ignore notebooks entirely:
+# *.ipynb
+
+# =============================================================================
+# Data — NEVER commit raw F1 data, caches, or model artifacts
+# =============================================================================
+data/
+!data/README.md
+!data/.gitkeep
+
+# FastF1 cache (can grow to many GB)
+.fastf1_cache/
+fastf1_cache/
+cache/
+
+# Parquet / CSV / feather dumps
+*.parquet
+*.feather
+*.csv
+*.tsv
+# (allow small fixture files used in tests)
+!tests/**/*.csv
+!tests/**/*.parquet
+
+# =============================================================================
+# ML artifacts
+# =============================================================================
+mlruns/
+mlartifacts/
+mlflow.db
+*.mlflow
+
+# Model checkpoints & weights
+*.ckpt
+*.pt
+*.pth
+*.onnx
+*.h5
+*.pkl
+*.joblib
+*.safetensors
+checkpoints/
+runs/                # tensorboard / sb3 default
+tb_logs/
+wandb/
+lightning_logs/
+
+# Feast
+data/registry.db
+.feast/
+
+# DVC (if you add it later)
+/.dvc/cache
+/.dvc/tmp
+/.dvc/plots
+
+# =============================================================================
+# Infrastructure — Terraform
+# =============================================================================
+# Local .terraform directories
+**/.terraform/*
+
+# .tfstate files — NEVER commit; use remote backend (S3 + DynamoDB / azurerm)
+*.tfstate
+*.tfstate.*
+*.tfstate.backup
+
+# Crash log files
+crash.log
+crash.*.log
+
+# Variable files that may contain secrets
+*.tfvars
+*.tfvars.json
+!*.tfvars.example
+
+# Override files
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# CLI config
+.terraformrc
+terraform.rc
+.terraform.lock.hcl    # optional — many teams DO commit this; remove # to ignore
+
+# =============================================================================
+# Kubernetes / Helm
+# =============================================================================
+# Helm chart dependencies
+**/charts/*.tgz
+**/Chart.lock
+
+# Rendered manifests (if you template locally)
+rendered/
+manifests-rendered/
+
+# Local kubeconfigs — never commit
+kubeconfig
+kubeconfig.*
+*.kubeconfig
+.kube/
+
+# Sealed-secret unsealed forms
+*-unsealed.yaml
+
+# =============================================================================
+# Secrets — paranoid catch-all
+# =============================================================================
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+secrets/
+.secrets/
+*.secret
+.env.local
+.env.*.local
+
+# Cloud credentials
+.aws/
+.azure/
+gcp-key.json
+service-account*.json
+
+# =============================================================================
+# Docker
+# =============================================================================
+# (Dockerfiles ARE committed; this is just for local artifacts)
+.dockerignore.local
+
+# =============================================================================
+# IDEs & editors
+# =============================================================================
+.vscode/
+!.vscode/settings.json.example
+!.vscode/extensions.json
+.idea/
+*.swp
+*.swo
+*~
+.project
+.pydevproject
+.spyderproject
+.spyproject
+.ropeproject
+
+# =============================================================================
+# OS
+# =============================================================================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# =============================================================================
+# Project-specific
+# =============================================================================
+# Streamlit
+.streamlit/secrets.toml
+
+# Local MinIO data (when running locally via docker-compose)
+.minio-data/
+minio-data/
+
+# Local Postgres data
+postgres-data/
+pgdata/
+
+# Generated docs
+site/                # mkdocs
+docs/_build/         # sphinx
+
+# Profiling output
+*.prof
+prof/
