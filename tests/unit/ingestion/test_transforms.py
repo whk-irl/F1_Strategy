@@ -46,8 +46,8 @@ class TestBronzeToSilver:
 
     def test_pit_flags(self, bronze_laps_df: pd.DataFrame) -> None:
         silver = bronze_to_silver(bronze_laps_df, year=2024, round_number=1, session="R")
-        assert silver[silver["lap_number"] == 5]["pit_in_this_lap"].iloc[0] is True
-        assert silver[silver["lap_number"] == 6]["pit_out_this_lap"].iloc[0] is True
+        assert bool(silver[silver["lap_number"] == 5]["pit_in_this_lap"].iloc[0])
+        assert bool(silver[silver["lap_number"] == 6]["pit_out_this_lap"].iloc[0])
         # All other laps should not be pit laps
         non_pit_in = silver[~silver["lap_number"].isin([5])]
         assert not non_pit_in["pit_in_this_lap"].any()

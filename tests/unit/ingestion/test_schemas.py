@@ -52,7 +52,7 @@ class TestSilverLapSchema:
     def test_extra_column_raises(self, silver_laps_df: pd.DataFrame) -> None:
         df = silver_laps_df.copy()
         df["extra"] = 0
-        with pytest.raises(pa.errors.SchemaError):
+        with pytest.raises((pa.errors.SchemaError, pa.errors.SchemaErrors)):
             SilverLapSchema.validate(df)
 
     def test_invalid_session_raises(self, silver_laps_df: pd.DataFrame) -> None:
