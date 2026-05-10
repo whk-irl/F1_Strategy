@@ -24,7 +24,7 @@ import numpy as np
 import pandas as pd
 import typer
 from ml.models._loader import load_gold_seasons
-from scipy.stats import spearmanr  # type: ignore[import-untyped]
+from scipy.stats import spearmanr
 
 from services.simulator.lap_simulator import (
     PIT_LOSS_S,

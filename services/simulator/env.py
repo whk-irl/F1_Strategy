@@ -79,8 +79,8 @@ _ACTION_TO_COMPOUND: dict[int, int] = {1: 0, 2: 1, 3: 2}
 # _TIRE_TABLE_CACHE: avoids re-running batch tire model inference when the
 #   same (driver baseline_delta, round_num) combination is seen again.
 # ---------------------------------------------------------------------------
-_RACE_ARRAY_CACHE: dict[tuple, dict] = {}
-_TIRE_TABLE_CACHE: dict[tuple, np.ndarray] = {}
+_RACE_ARRAY_CACHE: dict[tuple[Any, ...], dict[str, Any]] = {}
+_TIRE_TABLE_CACHE: dict[float, np.ndarray] = {}
 
 # Tire table quantisation — race_progress binned into 25 steps of 0.04 each.
 _RP_BINS: int = 25
@@ -248,7 +248,7 @@ def _synthetic_deg(
     return penalty
 
 
-class F1RaceEnv(gym.Env):
+class F1RaceEnv(gym.Env[np.ndarray, np.ndarray]):
     """Single-driver F1 race strategy Gymnasium environment.
 
     Args:
@@ -260,7 +260,7 @@ class F1RaceEnv(gym.Env):
         noise_std: Gaussian noise std added to simulated lap times (default 0.2 s).
     """
 
-    metadata: ClassVar[dict[str, Any]] = {"render_modes": []}
+    metadata: ClassVar[dict[str, Any]] = {"render_modes": []}  # type: ignore[misc]
 
     def __init__(
         self,
@@ -415,8 +415,8 @@ class F1RaceEnv(gym.Env):
         for drv, grp in field_df.groupby("driver_number"):
             idx = drv_to_idx[drv]
             grp = grp.sort_values("lap_number")
-            laps = grp["lap_number"].values.astype(int)
-            lap_times = grp["lap_time_s"].values.astype(float)
+            laps = np.asarray(grp["lap_number"].values, dtype=int)
+            lap_times = np.asarray(grp["lap_time_s"].values, dtype=float)
 
             nan_mask = np.isnan(lap_times)
             lap_times[nan_mask] = median_fallback[laps[nan_mask]]
@@ -424,20 +424,20 @@ class F1RaceEnv(gym.Env):
 
             if "tyre_life_laps" in grp.columns:
                 tl = pd.to_numeric(grp["tyre_life_laps"], errors="coerce").fillna(15)
-                self._field_tyre_age_arr[idx, laps] = tl.values.astype(np.int32)
+                self._field_tyre_age_arr[idx, laps] = np.asarray(tl.values, dtype=np.int32)
 
             if "pit_in_this_lap" in grp.columns:
                 pit = grp["pit_in_this_lap"].fillna(False).astype(bool)
-                self._field_pitted_arr[idx, laps] = pit.values
+                self._field_pitted_arr[idx, laps] = np.asarray(pit.values, dtype=bool)
 
         # Wet fraction per lap — vectorized over all drivers including agent.
         self._wet_fraction_arr = np.zeros(total + 1, dtype=np.float32)
         wet_set = np.array(list(_WET_COMPOUNDS), dtype=int)
         for lap, grp in race_df.groupby("lap_number"):
-            compounds = grp["compound_encoded"].dropna().values
+            compounds = np.asarray(grp["compound_encoded"].dropna().values, dtype=int)
             if len(compounds):
-                self._wet_fraction_arr[int(lap)] = np.isin(
-                    compounds.astype(int), wet_set
+                self._wet_fraction_arr[int(lap)] = np.isin(  # type: ignore[arg-type]
+                    compounds, wet_set
                 ).sum() / len(compounds)
 
         # Precompute track status per lap as array for O(1) lookup.
@@ -507,7 +507,7 @@ class F1RaceEnv(gym.Env):
 
         return self._build_obs(), {}
 
-    def step(self, action: int) -> tuple[np.ndarray, float, bool, bool, dict[str, Any]]:
+    def step(self, action: int) -> tuple[np.ndarray, float, bool, bool, dict[str, Any]]:  # type: ignore[override]
         """Advance one lap.
 
         Args:

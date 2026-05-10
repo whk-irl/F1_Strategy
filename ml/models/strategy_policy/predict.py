@@ -103,6 +103,7 @@ def recommend_action(
             predates the current env observation space.
     """
     obs_arr = np.array(obs, dtype=np.float32).reshape(1, -1)
+    assert model.observation_space.shape is not None
     expected = model.observation_space.shape[0]
     if obs_arr.shape[1] != expected:
         raise ValueError(
@@ -133,6 +134,7 @@ def action_probabilities(
     import torch
 
     obs_arr = np.array(obs, dtype=np.float32).reshape(1, -1)
+    assert model.observation_space.shape is not None
     expected = model.observation_space.shape[0]
     if obs_arr.shape[1] != expected:
         raise ValueError(
@@ -143,6 +145,6 @@ def action_probabilities(
     obs_tensor = model.policy.obs_to_tensor(obs_arr)[0]
     with torch.no_grad():
         dist = model.policy.get_distribution(obs_tensor)
-        probs = dist.distribution.probs.squeeze().cpu().numpy()
+        probs = dist.distribution.probs.squeeze().cpu().numpy()  # type: ignore[union-attr]
 
     return {ACTION_NAMES[i]: float(p) for i, p in enumerate(probs)}

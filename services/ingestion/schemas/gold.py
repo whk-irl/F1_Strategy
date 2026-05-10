@@ -18,7 +18,7 @@ class GoldLapSchema(SilverLapSchema):
     """Silver schema plus derived ML features."""
 
     # Feast timestamp — synthetic race date for point-in-time joins
-    event_timestamp: Series[pd.DatetimeTZDtype] = pa.Field(  # type: ignore[type-arg]
+    event_timestamp: Series[pd.DatetimeTZDtype] = pa.Field(
         dtype_kwargs={"tz": "UTC"},
         description="Approximate race date (year + round) in UTC, for Feast joins.",
     )

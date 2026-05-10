@@ -120,7 +120,7 @@ def simulate_driver_race(
                 for d in (-1, 1, -2, 2, -3, 3)
                 if field_medians.get(lap + d) is not None
             ]
-            field_med = float(neighbours[0]) if neighbours else 90.0
+            field_med = float(neighbours[0]) if neighbours else 90.0  # type: ignore[arg-type]
 
         tire_delta = predict_lap_time_delta(
             tyre_life_laps=tyre_age,

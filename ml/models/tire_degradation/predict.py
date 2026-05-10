@@ -7,6 +7,7 @@ given tyre state inputs.
 from __future__ import annotations
 
 import os
+from typing import Any
 
 import mlflow.lightgbm
 import numpy as np
@@ -18,7 +19,7 @@ _MODEL_URI = os.getenv(
 )
 
 
-def load_model() -> mlflow.pyfunc.PyFuncModel:
+def load_model() -> Any:
     """Load the registered tire degradation model from MLflow."""
     tracking_uri = os.getenv("PITWALL_MLFLOW_TRACKING_URI", "mlruns")
     mlflow.set_tracking_uri(tracking_uri)
@@ -32,7 +33,7 @@ def predict_lap_time_delta(
     track_status_encoded: int,
     is_fresh_tyre: bool,
     lap_delta_to_field_median_s: float,
-    model: mlflow.pyfunc.PyFuncModel | None = None,
+    model: Any | None = None,
 ) -> float:
     """Predict the lap time delta (seconds vs driver median) for given tyre state.
 
@@ -71,7 +72,7 @@ def predict_stint_degradation(
     compound_encoded: int,
     race_progress_start: float,
     lap_delta_to_field_median_s: float,
-    model: mlflow.pyfunc.PyFuncModel | None = None,
+    model: Any | None = None,
 ) -> np.ndarray:
     """Predict lap time deltas for an entire projected stint.
 
@@ -102,4 +103,4 @@ def predict_stint_degradation(
             "lap_delta_to_field_median_s": lap_delta_to_field_median_s,
         }
     )
-    return model.predict(rows)
+    return np.asarray(model.predict(rows))

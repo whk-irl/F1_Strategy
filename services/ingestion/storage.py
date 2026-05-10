@@ -33,12 +33,12 @@ def _build_s3_client(settings: IngestionSettings) -> S3Client:
     """Return a boto3 S3 client wired to the correct backend."""
     if settings.storage_backend == "s3":
         # Credentials come from the IAM role / IRSA — never hardcoded.
-        return boto3.client(  # type: ignore[return-value]
+        return boto3.client(
             "s3",
             region_name=settings.aws_region,
         )
     # MinIO: explicit endpoint + credentials.
-    return boto3.client(  # type: ignore[return-value]
+    return boto3.client(
         "s3",
         endpoint_url=settings.minio_endpoint_url,
         aws_access_key_id=settings.minio_access_key,

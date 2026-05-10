@@ -105,7 +105,7 @@ def _build_sc_label(df: pd.DataFrame, horizon: int = SC_HORIZON) -> pd.DataFrame
     race_status["is_sc_next"] = False
     for _grp_keys, grp in race_status.groupby(["year", "round_number"]):
         idx = grp.index
-        sc_flags = (grp["track_status_encoded"] >= 2).values
+        sc_flags = np.asarray((grp["track_status_encoded"] >= 2).values, dtype=bool)
         rolling = np.zeros(len(sc_flags), dtype=bool)
         for i in range(len(sc_flags)):
             rolling[i] = sc_flags[i : i + horizon].any()
@@ -215,7 +215,7 @@ def train(config: SafetyCarConfig | None = None) -> None:
     with mlflow.start_run():
         mlflow.log_params({**lgb_params, "training_seasons": config.training_seasons})
 
-        model = lgb.LGBMClassifier(**lgb_params)
+        model = lgb.LGBMClassifier(**lgb_params)  # type: ignore[arg-type]
         has_val = len(y_val) > 0
         model.fit(
             X_train,

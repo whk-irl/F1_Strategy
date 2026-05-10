@@ -7,6 +7,7 @@ Returns probability that a safety car or VSC will appear within the next
 from __future__ import annotations
 
 import os
+from typing import Any
 
 import mlflow.pyfunc
 import pandas as pd
@@ -23,7 +24,7 @@ _MODEL_URI = os.getenv(
 DEFAULT_THRESHOLD = 0.30
 
 
-def load_model() -> mlflow.pyfunc.PyFuncModel:
+def load_model() -> Any:
     """Load the registered safety car model from MLflow."""
     tracking_uri = os.getenv("PITWALL_MLFLOW_TRACKING_URI", "mlruns")
     mlflow.set_tracking_uri(tracking_uri)
@@ -37,7 +38,7 @@ def predict_sc_probability(
     compound_encoded: int,
     tyre_life_laps: float,
     position: float,
-    model: mlflow.pyfunc.PyFuncModel | None = None,
+    model: Any | None = None,
 ) -> float:
     """Predict the probability of a safety car *starting* within the next 3 laps.
 

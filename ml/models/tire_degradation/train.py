@@ -163,7 +163,7 @@ def train(config: TireDegConfig | None = None) -> None:
     with mlflow.start_run():
         mlflow.log_params({**lgb_params, "training_seasons": config.training_seasons})
 
-        model = lgb.LGBMRegressor(**lgb_params)
+        model = lgb.LGBMRegressor(**lgb_params)  # type: ignore[arg-type]
         has_val = len(y_val) > 0
         model.fit(
             X_train,

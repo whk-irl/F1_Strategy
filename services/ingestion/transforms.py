@@ -10,7 +10,7 @@ failures are caught close to where the bad data is produced.
 from __future__ import annotations
 
 import logging
-from typing import Final
+from typing import Any, Final
 
 import numpy as np
 import pandas as pd
@@ -164,7 +164,7 @@ def silver_to_gold(df: pd.DataFrame, total_laps: int) -> pd.DataFrame:
     out["rolling_lap_time_3_s"] = group_driver_stint["lap_time_s"].transform(
         lambda s: s.rolling(3, min_periods=1).mean()
     )
-    out["tyre_deg_rate_s_per_lap"] = group_driver_stint.apply(
+    out["tyre_deg_rate_s_per_lap"] = group_driver_stint.apply(  # type: ignore[call-overload]
         _compute_deg_rate, include_groups=False
     ).reset_index(level=[0, 1], drop=True)
 
@@ -185,12 +185,12 @@ def silver_to_gold(df: pd.DataFrame, total_laps: int) -> pd.DataFrame:
 # ---------------------------------------------------------------------------
 
 
-def _timedelta_to_seconds(series: pd.Series) -> pd.Series:  # type: ignore[type-arg]
+def _timedelta_to_seconds(series: pd.Series[Any]) -> pd.Series[Any]:
     """Convert a pd.Timedelta series to float seconds (NaT → NaN)."""
-    return series.dt.total_seconds()
+    return series.dt.total_seconds()  # type: ignore[no-any-return]
 
 
-def _encode_track_status(series: pd.Series) -> pd.Series:  # type: ignore[type-arg]
+def _encode_track_status(series: pd.Series[Any]) -> pd.Series[Any]:
     """Map FastF1 track-status strings to a single integer priority code.
 
     FastF1 can return composite strings like ``"12"`` meaning yellow + clear.
@@ -199,7 +199,7 @@ def _encode_track_status(series: pd.Series) -> pd.Series:  # type: ignore[type-a
     priority = {"5": 4, "6": 3, "4": 2, "2": 1, "1": 0}
 
     def _map_row(val: object) -> int:
-        if pd.isna(val):
+        if pd.isna(val):  # type: ignore[call-overload]
             return 0
         chars = str(val)
         return max((priority.get(c, 0) for c in chars), default=0)
@@ -207,7 +207,7 @@ def _encode_track_status(series: pd.Series) -> pd.Series:  # type: ignore[type-a
     return series.map(_map_row).astype(int)
 
 
-def _laps_since_sc(df: pd.DataFrame) -> pd.Series:  # type: ignore[type-arg]
+def _laps_since_sc(df: pd.DataFrame) -> pd.Series[Any]:
     """Return the number of laps elapsed since the last SC/VSC period ended."""
     # SC/VSC laps have track_status_encoded >= 2.
     encoded = _encode_track_status(df["track_status"])
@@ -225,7 +225,7 @@ def _laps_since_sc(df: pd.DataFrame) -> pd.Series:  # type: ignore[type-arg]
     return pd.Series(counter, index=df.index)
 
 
-def _compute_deg_rate(group: pd.DataFrame) -> pd.Series:  # type: ignore[type-arg]
+def _compute_deg_rate(group: pd.DataFrame) -> pd.Series[Any]:
     """OLS slope of lap_time_s vs tyre_life_laps within one stint for one driver.
 
     Returns NaN for stints with fewer than 3 valid laps (insufficient for a
@@ -235,7 +235,7 @@ def _compute_deg_rate(group: pd.DataFrame) -> pd.Series:  # type: ignore[type-ar
     if len(valid) < 3:
         return pd.Series(np.nan, index=group.index)
 
-    x = valid["tyre_life_laps"].values
-    y = valid["lap_time_s"].values
+    x = np.asarray(valid["tyre_life_laps"].values, dtype=float)
+    y = np.asarray(valid["lap_time_s"].values, dtype=float)
     slope = float(np.polyfit(x, y, 1)[0])
     return pd.Series(max(slope, 0.0), index=group.index)

@@ -89,7 +89,7 @@ class StrategyPolicyConfig(BaseSettings):
 # ---------------------------------------------------------------------------
 
 
-class MultiRaceEnv(gym.Env):
+class MultiRaceEnv(gym.Env[np.ndarray, np.ndarray]):
     """F1RaceEnv wrapper that samples a random (race, driver) pair on each reset.
 
     Sampling diverse races and driver baselines is the primary regulariser
@@ -97,7 +97,7 @@ class MultiRaceEnv(gym.Env):
     performance level.
     """
 
-    metadata: ClassVar[dict[str, Any]] = {"render_modes": []}
+    metadata: ClassVar[dict[str, Any]] = {"render_modes": []}  # type: ignore[misc]
 
     def __init__(
         self,
@@ -131,7 +131,7 @@ class MultiRaceEnv(gym.Env):
             options={"race_df": race_df, "driver_number": driver},
         )
 
-    def step(self, action: int) -> tuple[np.ndarray, float, bool, bool, dict[str, Any]]:
+    def step(self, action: int) -> tuple[np.ndarray, float, bool, bool, dict[str, Any]]:  # type: ignore[override]
         return self._inner.step(action)
 
 
@@ -232,7 +232,7 @@ def train(config: StrategyPolicyConfig | None = None) -> None:
     if not race_pool:
         raise RuntimeError("Race pool is empty. Ingest data first or lower --min-drivers.")
 
-    def _make_env() -> gym.Env:
+    def _make_env() -> gym.Env[np.ndarray, np.ndarray]:
         return MultiRaceEnv(
             race_pool,
             tire_model,
@@ -372,7 +372,7 @@ def finetune(
     gold_df = load_gold_seasons(config.training_seasons)
     race_pool = build_race_pool(gold_df, config.min_drivers_per_race)
 
-    def _make_env() -> gym.Env:
+    def _make_env() -> gym.Env[np.ndarray, np.ndarray]:
         return MultiRaceEnv(race_pool, tire_model, sc_model, config.pit_loss_s, config.noise_std)
 
     vec_env = DummyVecEnv([_make_env for _ in range(config.n_envs)])

@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import logging
 
+import numpy as np
 import pandas as pd
 from sklearn.linear_model import HuberRegressor
 
@@ -89,6 +90,7 @@ def calibrate(
 
         rate, cliff = _fit_degradation(stints, compound)
         if rate is not None:
+            assert cliff is not None
             fitted_rate[compound] = rate
             fitted_cliff[compound] = cliff
             logger.info(
@@ -154,7 +156,7 @@ def _fit_degradation(
     Returns:
         (rate_s_per_lap, cliff_lap) or (None, None) if fit fails.
     """
-    X = stints["tyre_life_laps"].values.reshape(-1, 1)
+    X = np.asarray(stints["tyre_life_laps"].values).reshape(-1, 1)
     y = stints["lap_time_s"].values
 
     if len(X) < _MIN_STINT_LAPS:

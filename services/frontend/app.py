@@ -10,6 +10,7 @@ Run with:
 from __future__ import annotations
 
 import os
+from typing import Any
 
 import mlflow.pyfunc
 import pandas as pd
@@ -25,6 +26,7 @@ from ml.models.strategy_policy.predict import (
     load_policy,
     recommend_action,
 )
+from stable_baselines3 import PPO
 
 from services.simulator.env import F1RaceEnv
 
@@ -88,7 +90,7 @@ ACTION_COLOR: dict[int, str] = {
 
 
 @st.cache_resource(show_spinner="Loading models…")
-def _load_models() -> tuple:
+def _load_models() -> tuple[Any, Any, Any]:
     tracking_uri = os.getenv("PITWALL_MLFLOW_TRACKING_URI", "mlruns")
     mlflow.set_tracking_uri(tracking_uri)
     tire = mlflow.pyfunc.load_model(
@@ -114,9 +116,9 @@ def _load_gold() -> pd.DataFrame:
 def _run_replay(
     race_df: pd.DataFrame,
     driver_num: int | str,
-    tire_model: object,
-    sc_model: object,
-    policy: object,
+    tire_model: Any,
+    sc_model: Any,
+    policy: PPO,
 ) -> pd.DataFrame:
     """Replay the race using actual 2024 team decisions; show policy recommendations.
 
@@ -130,7 +132,7 @@ def _run_replay(
 
     agent_gold = race_df[race_df["driver_number"] == driver_num].sort_values("lap_number")
 
-    rows: list[dict] = []
+    rows: list[dict[str, Any]] = []
     terminated = False
 
     while not terminated:
@@ -358,7 +360,7 @@ def main() -> None:
             else ""
         )
         label = f"#{drv}  {abbr}" + (f"  · {team}" if team else "")
-        driver_options[label] = drv
+        driver_options[label] = drv  # type: ignore[assignment]
 
     with st.sidebar:
         selected_driver_label = st.selectbox("Driver", list(driver_options.keys()))
@@ -409,10 +411,10 @@ def main() -> None:
     # ── Lap explorer ─────────────────────────────────────────────────────────
     st.subheader("Lap-by-lap explorer")
     selected_lap = st.slider("Lap", 1, len(replay), 1)
-    row = replay[replay["lap"] == selected_lap]
-    if row.empty:
-        row = replay.iloc[selected_lap - 1 : selected_lap]
-    row = row.iloc[0]
+    row_df = replay[replay["lap"] == selected_lap]
+    if row_df.empty:
+        row_df = replay.iloc[selected_lap - 1 : selected_lap]
+    row = row_df.iloc[0]
 
     left, right = st.columns(2)
 
