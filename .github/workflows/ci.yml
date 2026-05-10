@@ -72,54 +72,7 @@ jobs:
 
   # ---------------------------------------------------------------------------
   # Integration tests (MinIO + MLflow via docker-compose)
+  # TODO: add tests/integration/ when the ingestion + ML integration suite
+  #       is ready. Requires MinIO (minio server /data) and a running MLflow
+  #       instance. Run locally with: docker-compose up && pytest tests/integration
   # ---------------------------------------------------------------------------
-  integration-tests:
-    name: Integration tests
-    runs-on: ubuntu-latest
-    needs: [unit-tests]
-    services:
-      minio:
-        image: quay.io/minio/minio:RELEASE.2024-03-15T01-07-19Z
-        ports:
-          - 9000:9000
-        env:
-          MINIO_ROOT_USER: minioadmin
-          MINIO_ROOT_PASSWORD: minioadmin
-        options: >-
-          --health-cmd "curl -f http://localhost:9000/minio/health/live"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-      postgres:
-        image: postgres:16-alpine
-        ports:
-          - 5432:5432
-        env:
-          POSTGRES_USER: pitwall
-          POSTGRES_PASSWORD: pitwall
-          POSTGRES_DB: mlflow
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-    steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v3
-        with:
-          version: "latest"
-      - name: Install dev dependencies
-        run: uv sync --all-extras
-      - name: Create MinIO bucket
-        run: |
-          pip install awscli-local
-          AWS_ACCESS_KEY_ID=minioadmin AWS_SECRET_ACCESS_KEY=minioadmin \
-            aws --endpoint-url http://localhost:9000 s3 mb s3://pitwall-ai 2>/dev/null || true
-      - name: Run integration tests
-        env:
-          PITWALL_MINIO_ENDPOINT: localhost:9000
-          PITWALL_MINIO_ACCESS_KEY: minioadmin
-          PITWALL_MINIO_SECRET_KEY: minioadmin
-          PITWALL_MINIO_BUCKET: pitwall-ai
-          PITWALL_MLFLOW_TRACKING_URI: http://localhost:5000
-        run: uv run pytest tests/integration -v -m "not slow"
