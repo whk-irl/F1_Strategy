@@ -71,7 +71,8 @@ ipython_config.py
 # =============================================================================
 # Data — NEVER commit raw F1 data, caches, or model artifacts
 # =============================================================================
-data/
+# data/* (not data/) so negations can re-include specific files
+data/*
 !data/README.md
 !data/.gitkeep
 !data/gold_2024.parquet       # baked gold data for Streamlit Cloud / Docker
@@ -84,15 +85,13 @@ cache/
 # Parquet / CSV / feather dumps (except the baked deploy file above)
 *.parquet
 !data/gold_2024.parquet
+!tests/**/*.parquet
 
-# Baked model artifacts for deployment (small — ~0.5 MB total, safe to commit)
-!models_baked/
 *.feather
 *.csv
 *.tsv
 # (allow small fixture files used in tests)
 !tests/**/*.csv
-!tests/**/*.parquet
 
 # =============================================================================
 # ML artifacts
@@ -109,6 +108,8 @@ mlflow.db
 *.onnx
 *.h5
 *.pkl
+!models_baked/tire/model.pkl
+!models_baked/sc/model.pkl
 *.joblib
 *.safetensors
 checkpoints/
