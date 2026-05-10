@@ -1,0 +1,23 @@
+artifact_path: file:C:/Users/wanghaokun/Documents/GitHub/F1_Strategy/F1_Strategy/mlruns/1/models/m-db66754181dd48238bae1e180a1209b4/artifacts
+flavors:
+  lightgbm:
+    code: null
+    data: model.pkl
+    lgb_version: 4.6.0
+    model_class: lightgbm.sklearn.LGBMRegressor
+    serialization_format: cloudpickle
+    skops_trusted_types: null
+  python_function:
+    data: model.pkl
+    env:
+      conda: conda.yaml
+      virtualenv: python_env.yaml
+    loader_module: mlflow.lightgbm
+    python_version: 3.12.13
+mlflow_version: 3.12.0
+model_id: m-db66754181dd48238bae1e180a1209b4
+model_size_bytes: 185382
+model_uuid: m-db66754181dd48238bae1e180a1209b4
+prompts: null
+run_id: 24f60245cac94fbaa7d4a73ef48fb384
+utc_time_created: '2026-05-10 02:26:01.904003'

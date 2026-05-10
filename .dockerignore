@@ -1,0 +1,22 @@
+# Keep build context small — exclude everything not needed in the image
+.venv/
+__pycache__/
+*.py[cod]
+.git/
+.gitignore
+mlruns/
+mlflow.db
+fastf1_cache/
+*.ipynb
+tests/
+docs/
+infra/
+ml/notebooks/
+.env
+.env.*
+*.log
+*.tmp
+coverage.xml
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/

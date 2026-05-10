@@ -74,14 +74,19 @@ ipython_config.py
 data/
 !data/README.md
 !data/.gitkeep
+!data/gold_2024.parquet       # baked gold data for Streamlit Cloud / Docker
 
 # FastF1 cache (can grow to many GB)
 .fastf1_cache/
 fastf1_cache/
 cache/
 
-# Parquet / CSV / feather dumps
+# Parquet / CSV / feather dumps (except the baked deploy file above)
 *.parquet
+!data/gold_2024.parquet
+
+# Baked model artifacts for deployment (small — ~0.5 MB total, safe to commit)
+!models_baked/
 *.feather
 *.csv
 *.tsv
@@ -112,8 +117,9 @@ tb_logs/
 wandb/
 lightning_logs/
 
-# Feast
-data/registry.db
+# Feast — local registry and online store are generated artifacts
+ml/features/registry.db
+ml/features/online_store.db
 .feast/
 
 # DVC (if you add it later)
