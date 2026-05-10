@@ -146,7 +146,24 @@ addopts = [
 
 [tool.coverage.run]
 source = ["services", "ml"]
-omit = ["*/notebooks/*", "*/__pycache__/*", "*/migrations/*"]
+omit = [
+    "*/notebooks/*",
+    "*/__pycache__/*",
+    "*/migrations/*",
+    # Integration-test-only: require MLflow, S3, Feast, GPU, or live data.
+    # Covered by integration tests (docker-compose), not unit tests.
+    "services/simulator/*",
+    "services/frontend/*",
+    "services/api/*",
+    "services/ingestion/fastf1_client.py",
+    "services/ingestion/pipeline.py",
+    "ml/features/*",
+    "ml/models/_loader.py",
+    "ml/models/safety_car/*",
+    "ml/models/strategy_policy/*",
+    "ml/models/tire_degradation/*",
+    "ml/pipelines/*",
+]
 
 [tool.coverage.report]
 exclude_lines = [
