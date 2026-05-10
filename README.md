@@ -154,20 +154,10 @@ make demo
 # → http://localhost:8501
 ```
 
-## Roadmap
-
-- [x] Week 1 — Data ingestion + bronze/silver/gold layering
-- [ ] Week 2 — Feature engineering + Feast registration
-- [ ] Week 3 — Tire / safety-car / pace models
-- [ ] Week 4 — Race simulator (Gym env) + validation
-- [ ] Week 5 — PPO strategy policy + baselines
-- [ ] Week 6 — BentoML serving + Streamlit frontend
-- [ ] Week 7 — Helm charts, Terraform (EKS + AKS), Argo CD
-- [ ] Week 8 — Monitoring, drift detection, blog post, demo video
 
 ## Why I built this
 
-(Your story here — what problem you wanted to solve, what you learned, what surprised you. This is the section recruiters actually read.)
+A tifosi dreamed of another Ferrari WDC.
 
 ## License
 
