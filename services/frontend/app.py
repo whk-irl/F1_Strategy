@@ -12,7 +12,6 @@ from __future__ import annotations
 import os
 
 import mlflow.pyfunc
-import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
@@ -26,32 +25,61 @@ from ml.models.strategy_policy.predict import (
     load_policy,
     recommend_action,
 )
+
 from services.simulator.env import F1RaceEnv
-from services.simulator.lap_simulator import PIT_LOSS_S
 
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
 
 ROUND_NAMES: dict[int, str] = {
-    1: "Bahrain GP", 2: "Saudi Arabian GP", 3: "Australian GP",
-    4: "Japanese GP", 5: "Chinese GP", 6: "Miami GP",
-    7: "Emilia Romagna GP", 8: "Monaco GP", 9: "Canadian GP",
-    10: "Spanish GP", 11: "Austrian GP", 12: "British GP",
-    13: "Hungarian GP", 14: "Belgian GP", 15: "Dutch GP",
-    16: "Italian GP", 17: "Azerbaijan GP", 18: "Singapore GP",
-    19: "United States GP", 20: "Mexico City GP", 21: "São Paulo GP",
-    22: "Las Vegas GP", 23: "Qatar GP", 24: "Abu Dhabi GP",
+    1: "Bahrain GP",
+    2: "Saudi Arabian GP",
+    3: "Australian GP",
+    4: "Japanese GP",
+    5: "Chinese GP",
+    6: "Miami GP",
+    7: "Emilia Romagna GP",
+    8: "Monaco GP",
+    9: "Canadian GP",
+    10: "Spanish GP",
+    11: "Austrian GP",
+    12: "British GP",
+    13: "Hungarian GP",
+    14: "Belgian GP",
+    15: "Dutch GP",
+    16: "Italian GP",
+    17: "Azerbaijan GP",
+    18: "Singapore GP",
+    19: "United States GP",
+    20: "Mexico City GP",
+    21: "São Paulo GP",
+    22: "Las Vegas GP",
+    23: "Qatar GP",
+    24: "Abu Dhabi GP",
 }
 
 COMPOUND_LABEL: dict[int, str] = {
-    0: "SOFT", 1: "MEDIUM", 2: "HARD", 3: "INTER", 4: "WET", 5: "UNKNOWN",
+    0: "SOFT",
+    1: "MEDIUM",
+    2: "HARD",
+    3: "INTER",
+    4: "WET",
+    5: "UNKNOWN",
 }
 COMPOUND_COLOR: dict[int, str] = {
-    0: "#FF3333", 1: "#FFD700", 2: "#DDDDDD", 3: "#33CC33", 4: "#3399FF", 5: "#888888",
+    0: "#FF3333",
+    1: "#FFD700",
+    2: "#DDDDDD",
+    3: "#33CC33",
+    4: "#3399FF",
+    5: "#888888",
 }
 ACTION_COLOR: dict[int, str] = {
-    0: "#444444", 1: "#FF3333", 2: "#FFD700", 3: "#DDDDDD",
+    0: "#444444",
+    1: "#FF3333",
+    2: "#FFD700",
+    3: "#DDDDDD",
 }
 
 # ---------------------------------------------------------------------------
@@ -135,30 +163,32 @@ def _run_replay(
 
         obs, reward, terminated, _, info = env.step(team_action)
 
-        rows.append({
-            "lap": info["lap"],
-            "position": info["position"],
-            "actual_position": actual_position,
-            "compound": info["compound"],
-            "tyre_life": info["tyre_life"],
-            "sim_lap_time_s": info["sim_lap_time_s"],
-            "gap_ahead_s": info["gap_ahead_s"],
-            "gap_behind_s": info["gap_behind_s"],
-            "undercut_threat": info["undercut_threat"],
-            "is_wet": info["is_wet"],
-            "sc_probability": info["sc_probability"],
-            "track_status": env._last_track_status,
-            "recommended_action": action,
-            "recommended_label": label,
-            "pitted_this_lap": actual_pit,  # what team actually did
-            "prob_stay": probs["Stay out"],
-            "prob_soft": probs["Pit — SOFT"],
-            "prob_medium": probs["Pit — MEDIUM"],
-            "prob_hard": probs["Pit — HARD"],
-            "actual_pit": actual_pit,
-            "actual_compound": actual_compound,
-            "reward": reward,
-        })
+        rows.append(
+            {
+                "lap": info["lap"],
+                "position": info["position"],
+                "actual_position": actual_position,
+                "compound": info["compound"],
+                "tyre_life": info["tyre_life"],
+                "sim_lap_time_s": info["sim_lap_time_s"],
+                "gap_ahead_s": info["gap_ahead_s"],
+                "gap_behind_s": info["gap_behind_s"],
+                "undercut_threat": info["undercut_threat"],
+                "is_wet": info["is_wet"],
+                "sc_probability": info["sc_probability"],
+                "track_status": env._last_track_status,
+                "recommended_action": action,
+                "recommended_label": label,
+                "pitted_this_lap": actual_pit,  # what team actually did
+                "prob_stay": probs["Stay out"],
+                "prob_soft": probs["Pit — SOFT"],
+                "prob_medium": probs["Pit — MEDIUM"],
+                "prob_hard": probs["Pit — HARD"],
+                "actual_pit": actual_pit,
+                "actual_compound": actual_compound,
+                "reward": reward,
+            }
+        )
 
     return pd.DataFrame(rows)
 
@@ -176,56 +206,75 @@ def _position_chart(replay: pd.DataFrame, total_laps: int) -> go.Figure:
     sc_laps = replay[replay["track_status"] >= 2]["lap"].tolist()
     for lap in sc_laps:
         fig.add_vrect(
-            x0=lap - 0.5, x1=lap + 0.5,
-            fillcolor="yellow", opacity=0.15, line_width=0,
+            x0=lap - 0.5,
+            x1=lap + 0.5,
+            fillcolor="yellow",
+            opacity=0.15,
+            line_width=0,
         )
 
     # Simulated position (following actual team decisions)
-    fig.add_trace(go.Scatter(
-        x=replay["lap"], y=replay["position"],
-        mode="lines+markers", name="Simulated position",
-        line=dict(color="#E8002D", width=2),
-        marker=dict(size=4),
-    ))
+    fig.add_trace(
+        go.Scatter(
+            x=replay["lap"],
+            y=replay["position"],
+            mode="lines+markers",
+            name="Simulated position",
+            line={"color": "#E8002D", "width": 2},
+            marker={"size": 4},
+        )
+    )
 
     # Actual position from gold data
     actual = replay.dropna(subset=["actual_position"])
-    fig.add_trace(go.Scatter(
-        x=actual["lap"], y=actual["actual_position"],
-        mode="lines", name="Actual (2024)",
-        line=dict(color="#888888", width=1.5, dash="dot"),
-    ))
+    fig.add_trace(
+        go.Scatter(
+            x=actual["lap"],
+            y=actual["actual_position"],
+            mode="lines",
+            name="Actual (2024)",
+            line={"color": "#888888", "width": 1.5, "dash": "dot"},
+        )
+    )
 
     # Pit stop markers
     pits = replay[replay["pitted_this_lap"]]
-    fig.add_trace(go.Scatter(
-        x=pits["lap"], y=pits["position"],
-        mode="markers", name="Pit stop",
-        marker=dict(symbol="triangle-down", size=12, color="#E8002D"),
-        showlegend=True,
-    ))
+    fig.add_trace(
+        go.Scatter(
+            x=pits["lap"],
+            y=pits["position"],
+            mode="markers",
+            name="Pit stop",
+            marker={"symbol": "triangle-down", "size": 12, "color": "#E8002D"},
+            showlegend=True,
+        )
+    )
 
     # Laps where AI disagreed with team
     disagreed = replay[
-        ((replay["recommended_action"] > 0) & ~replay["actual_pit"]) |
-        ((replay["recommended_action"] == 0) & replay["actual_pit"])
+        ((replay["recommended_action"] > 0) & ~replay["actual_pit"])
+        | ((replay["recommended_action"] == 0) & replay["actual_pit"])
     ]
-    fig.add_trace(go.Scatter(
-        x=disagreed["lap"], y=disagreed["position"],
-        mode="markers", name="AI disagreed",
-        marker=dict(symbol="x", size=10, color="#FFD700"),
-        showlegend=True,
-    ))
+    fig.add_trace(
+        go.Scatter(
+            x=disagreed["lap"],
+            y=disagreed["position"],
+            mode="markers",
+            name="AI disagreed",
+            marker={"symbol": "x", "size": 10, "color": "#FFD700"},
+            showlegend=True,
+        )
+    )
 
     fig.update_layout(
-        yaxis=dict(autorange="reversed", title="Position", dtick=1),
-        xaxis=dict(title="Lap", range=[1, total_laps]),
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-        margin=dict(l=40, r=20, t=10, b=40),
+        yaxis={"autorange": "reversed", "title": "Position", "dtick": 1},
+        xaxis={"title": "Lap", "range": [1, total_laps]},
+        legend={"orientation": "h", "yanchor": "bottom", "y": 1.02, "xanchor": "right", "x": 1},
+        margin={"l": 40, "r": 20, "t": 10, "b": 40},
         height=280,
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(20,20,30,1)",
-        font=dict(color="#FFFFFF"),
+        font={"color": "#FFFFFF"},
         yaxis_gridcolor="#333",
         xaxis_gridcolor="#333",
     )
@@ -251,7 +300,8 @@ def main() -> None:
     )
 
     # Custom CSS — dark F1 feel
-    st.markdown("""
+    st.markdown(
+        """
     <style>
         .block-container { padding-top: 1rem; }
         .metric-label { font-size: 0.75rem; color: #999; }
@@ -260,7 +310,9 @@ def main() -> None:
             border-radius: 12px; font-weight: 700; font-size: 0.85rem;
         }
     </style>
-    """, unsafe_allow_html=True)
+    """,
+        unsafe_allow_html=True,
+    )
 
     # ── Sidebar ──────────────────────────────────────────────────────────────
     with st.sidebar:
@@ -270,7 +322,8 @@ def main() -> None:
 
         season = 2024
         round_options = {f"Round {r} — {n}": r for r, n in ROUND_NAMES.items()}
-        selected_label = st.selectbox("Race", list(round_options.keys()), index=9)  # Spain default — highest tyre wear
+        # Spain (index 9) is default — highest tyre wear, most interesting strategy
+        selected_label = st.selectbox("Race", list(round_options.keys()), index=9)
         selected_round = round_options[selected_label]
 
         st.divider()
@@ -282,12 +335,13 @@ def main() -> None:
     tire_model, sc_model, policy = _load_models()
     gold = _load_gold()
 
-    race_df = gold[
-        (gold["session"] == "R") & (gold["round_number"] == selected_round)
-    ].copy()
+    race_df = gold[(gold["session"] == "R") & (gold["round_number"] == selected_round)].copy()
 
     if race_df.empty:
-        st.error(f"No race data found for Round {selected_round}. Run `make ingest-season SEASON=2024` first.")
+        st.error(
+            f"No race data found for Round {selected_round}. "
+            "Run `make ingest-season SEASON=2024` first."
+        )
         return
 
     # Driver selector
@@ -313,7 +367,8 @@ def main() -> None:
 
     # ── Run replay ───────────────────────────────────────────────────────────
     cache_key = f"{selected_round}_{selected_driver}"
-    if run_btn or ("replay_key" not in st.session_state) or (st.session_state.replay_key != cache_key):
+    replay_stale = "replay_key" not in st.session_state or st.session_state.replay_key != cache_key
+    if run_btn or replay_stale:
         with st.spinner("Simulating race…"):
             st.session_state.replay = _run_replay(
                 race_df, selected_driver, tire_model, sc_model, policy
@@ -329,7 +384,8 @@ def main() -> None:
     event_name = ROUND_NAMES.get(selected_round, f"Round {selected_round}")
 
     # ── Header ───────────────────────────────────────────────────────────────
-    driver_abbr = selected_driver_label.split()[1] if len(selected_driver_label.split()) > 1 else str(selected_driver)
+    parts = selected_driver_label.split()
+    driver_abbr = parts[1] if len(parts) > 1 else str(selected_driver)
     st.markdown(f"## {event_name}  ·  {season}  ·  #{selected_driver} {driver_abbr}")
 
     # Summary metrics
@@ -355,7 +411,7 @@ def main() -> None:
     selected_lap = st.slider("Lap", 1, len(replay), 1)
     row = replay[replay["lap"] == selected_lap]
     if row.empty:
-        row = replay.iloc[selected_lap - 1: selected_lap]
+        row = replay.iloc[selected_lap - 1 : selected_lap]
     row = row.iloc[0]
 
     left, right = st.columns(2)
@@ -369,7 +425,7 @@ def main() -> None:
         st.markdown(
             f'<span class="compound-badge" style="background:{comp_color};'
             f'color:{"#111" if compound in (1, 2, 3) else "#fff"}">'
-            f'{comp_name}</span>',
+            f"{comp_name}</span>",
             unsafe_allow_html=True,
         )
         c1, c2 = st.columns(2)
@@ -404,10 +460,10 @@ def main() -> None:
             unsafe_allow_html=True,
         )
 
-        _prob_bar("Stay out",    row["prob_stay"],   "#444")
-        _prob_bar("Pit — SOFT",  row["prob_soft"],   "#FF3333")
-        _prob_bar("Pit — MEDIUM",row["prob_medium"], "#FFD700")
-        _prob_bar("Pit — HARD",  row["prob_hard"],   "#DDDDDD")
+        _prob_bar("Stay out", row["prob_stay"], "#444")
+        _prob_bar("Pit — SOFT", row["prob_soft"], "#FF3333")
+        _prob_bar("Pit — MEDIUM", row["prob_medium"], "#FFD700")
+        _prob_bar("Pit — HARD", row["prob_hard"], "#DDDDDD")
 
         total_pit_prob = row["prob_soft"] + row["prob_medium"] + row["prob_hard"]
         if action == 0 and total_pit_prob > 0.25:
@@ -426,12 +482,21 @@ def main() -> None:
 
     # ── Stint breakdown table ─────────────────────────────────────────────────
     with st.expander("Full race log"):
-        display = replay[[
-            "lap", "position", "actual_position",
-            "compound", "tyre_life", "sim_lap_time_s",
-            "gap_ahead_s", "gap_behind_s",
-            "recommended_label", "recommended_action", "actual_pit",
-        ]].copy()
+        display = replay[
+            [
+                "lap",
+                "position",
+                "actual_position",
+                "compound",
+                "tyre_life",
+                "sim_lap_time_s",
+                "gap_ahead_s",
+                "gap_behind_s",
+                "recommended_label",
+                "recommended_action",
+                "actual_pit",
+            ]
+        ].copy()
         display["compound"] = display["compound"].map(COMPOUND_LABEL)
         display["gap_ahead_s"] = display["gap_ahead_s"].apply(
             lambda x: f"{x:.1f}s" if x < 59 else "—"
@@ -443,10 +508,17 @@ def main() -> None:
         display["ai_would_pit"] = display["recommended_action"] > 0
         display.drop(columns=["recommended_action"], inplace=True)
         display.columns = [
-            "Lap", "AI Pos", "Actual Pos",
-            "Compound", "Tyre Age", "Sim Lap (s)",
-            "Gap Ahead", "Gap Behind",
-            "AI Recommendation", "Team Pitted", "AI Would Pit",
+            "Lap",
+            "AI Pos",
+            "Actual Pos",
+            "Compound",
+            "Tyre Age",
+            "Sim Lap (s)",
+            "Gap Ahead",
+            "Gap Behind",
+            "AI Recommendation",
+            "Team Pitted",
+            "AI Would Pit",
         ]
         st.dataframe(display, use_container_width=True, hide_index=True)
 

@@ -7,21 +7,18 @@ Integration tests that require MinIO or MLflow are marked with
 
 from __future__ import annotations
 
-import io
 from unittest.mock import MagicMock, patch
 
 import pandas as pd
 import pytest
-
 from services.ingestion.config import IngestionSettings
-
 
 # ---------------------------------------------------------------------------
 # Minimal settings fixture pointing at test doubles
 # ---------------------------------------------------------------------------
 
 
-@pytest.fixture()
+@pytest.fixture
 def settings() -> IngestionSettings:
     """Ingestion settings wired to test defaults (no real services required)."""
     return IngestionSettings(
@@ -40,7 +37,7 @@ def settings() -> IngestionSettings:
 # ---------------------------------------------------------------------------
 
 
-@pytest.fixture()
+@pytest.fixture
 def bronze_laps_df() -> pd.DataFrame:
     """Minimal synthetic bronze DataFrame covering the common case.
 
@@ -68,12 +65,8 @@ def bronze_laps_df() -> pd.DataFrame:
             "TrackStatus": ["1"] * 3 + ["6"] * 2 + ["1"] * 5,
             "IsAccurate": [True] * 4 + [False] + [True] * 5,
             # Pit timing (only on the pit lap, lap 5)
-            "PitInTime": [pd.NaT] * 4
-            + [pd.Timedelta("45 min")]
-            + [pd.NaT] * 5,
-            "PitOutTime": [pd.NaT] * 5
-            + [pd.Timedelta("46 min")]
-            + [pd.NaT] * 4,
+            "PitInTime": [pd.NaT] * 4 + [pd.Timedelta("45 min")] + [pd.NaT] * 5,
+            "PitOutTime": [pd.NaT] * 5 + [pd.Timedelta("46 min")] + [pd.NaT] * 4,
         }
     )
 
@@ -83,7 +76,7 @@ def bronze_laps_df() -> pd.DataFrame:
 # ---------------------------------------------------------------------------
 
 
-@pytest.fixture()
+@pytest.fixture
 def silver_laps_df(bronze_laps_df: pd.DataFrame) -> pd.DataFrame:
     """Return silver laps derived from the bronze fixture via the real transform."""
     from services.ingestion.transforms import bronze_to_silver
@@ -96,7 +89,7 @@ def silver_laps_df(bronze_laps_df: pd.DataFrame) -> pd.DataFrame:
 # ---------------------------------------------------------------------------
 
 
-@pytest.fixture()
+@pytest.fixture
 def mock_s3(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
     """Patch boto3.client so ObjectStorage never touches real AWS/MinIO."""
     mock_client = MagicMock()

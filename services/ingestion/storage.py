@@ -29,7 +29,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-def _build_s3_client(settings: IngestionSettings) -> "S3Client":
+def _build_s3_client(settings: IngestionSettings) -> S3Client:
     """Return a boto3 S3 client wired to the correct backend."""
     if settings.storage_backend == "s3":
         # Credentials come from the IAM role / IRSA — never hardcoded.

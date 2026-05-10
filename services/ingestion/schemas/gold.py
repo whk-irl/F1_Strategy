@@ -7,6 +7,7 @@ int; categoricals are one-hot encoded or label-encoded upstream.
 
 from __future__ import annotations
 
+import pandas as pd
 import pandera as pa
 from pandera.typing import Series
 
@@ -15,6 +16,12 @@ from .silver import SilverLapSchema
 
 class GoldLapSchema(SilverLapSchema):
     """Silver schema plus derived ML features."""
+
+    # Feast timestamp — synthetic race date for point-in-time joins
+    event_timestamp: Series[pd.DatetimeTZDtype] = pa.Field(  # type: ignore[type-arg]
+        dtype_kwargs={"tz": "UTC"},
+        description="Approximate race date (year + round) in UTC, for Feast joins.",
+    )
 
     # Pace features
     lap_time_delta_s: Series[float] = pa.Field(
@@ -53,6 +60,12 @@ class GoldLapSchema(SilverLapSchema):
     position_change_this_stint: Series[float] = pa.Field(
         nullable=True,
         description="Positions gained (+) or lost (-) since stint start.",
+    )
+
+    # Team relative pace — driver lap time vs field median on that lap
+    lap_delta_to_field_median_s: Series[float] = pa.Field(
+        nullable=True,
+        description="lap_time_s minus field median lap_time_s for that lap number.",
     )
 
     # Compound encoding (integer label, for models that prefer it)

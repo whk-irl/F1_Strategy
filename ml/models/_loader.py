@@ -34,8 +34,7 @@ def load_gold_seasons(seasons: list[int]) -> pd.DataFrame:
         local_path = os.getenv("PITWALL_LOCAL_DATA_PATH", "data/gold_2024.parquet")
         if not os.path.exists(local_path):
             raise RuntimeError(
-                f"Local data file not found: {local_path}. "
-                "Run scripts/export_for_deploy.py first."
+                f"Local data file not found: {local_path}. Run scripts/export_for_deploy.py first."
             )
         df = pd.read_parquet(local_path)
         logger.info("Loaded %d laps from local file %s", len(df), local_path)

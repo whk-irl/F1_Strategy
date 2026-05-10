@@ -9,7 +9,6 @@ from __future__ import annotations
 import pandas as pd
 import pandera as pa
 import pytest
-
 from services.ingestion.schemas.bronze import BronzeLapSchema
 from services.ingestion.schemas.silver import SilverLapSchema
 

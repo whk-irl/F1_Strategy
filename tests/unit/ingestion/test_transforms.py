@@ -9,7 +9,6 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 import pytest
-
 from services.ingestion.transforms import (
     COMPOUND_ENCODING,
     _encode_track_status,
@@ -104,10 +103,10 @@ class TestHelpers:
     @pytest.mark.parametrize(
         ("status_str", "expected"),
         [
-            ("1", 0),   # clear
-            ("2", 1),   # yellow
-            ("6", 3),   # SC
-            ("5", 4),   # red flag
+            ("1", 0),  # clear
+            ("2", 1),  # yellow
+            ("6", 3),  # SC
+            ("5", 4),  # red flag
             ("12", 1),  # composite — highest priority wins
         ],
     )

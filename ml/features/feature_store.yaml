@@ -1,0 +1,15 @@
+project: pitwall_ai
+provider: local
+
+registry:
+  registry_type: file
+  path: registry.db          # relative to this file; gitignored
+
+offline_store:
+  type: file                 # reads Parquet via pyarrow / s3fs
+
+online_store:
+  type: sqlite
+  path: online_store.db      # gitignored; populated by `feast materialize`
+
+entity_key_serialization_version: 3

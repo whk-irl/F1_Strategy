@@ -21,7 +21,7 @@ TRAINING_SEASONS ?= 2021,2022,2023,2024
 TOTAL_TIMESTEPS  ?= 1000000
 
 .PHONY: help setup up down ingest ingest-season \
-        train-tire train-safety-car train-policy demo \
+        train-tire train-safety-car validate-simulator train-policy demo \
         ecr-login build-images push-images \
         submit-train-tire submit-train-safety-car submit-train-policy \
         kubeconfig-update \
@@ -70,6 +70,9 @@ train-tire:  ## Train tire degradation model locally (CPU)
 
 train-safety-car:  ## Train safety-car model locally (CPU)
 	uv run python -m ml.models.safety_car.train
+
+validate-simulator:  ## Replay 2024 races through tire model; need Spearman ρ ≥ 0.7
+	uv run python -m services.simulator.validator --seasons $(SEASON)
 
 train-policy:  ## Train PPO policy locally (slow — CPU only)
 	uv run python -m ml.models.strategy_policy.train

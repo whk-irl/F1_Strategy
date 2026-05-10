@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import os
 import tempfile
-from typing import Any
 
 import mlflow
 import mlflow.tracking
@@ -58,8 +57,7 @@ def load_policy(run_id: str | None = None) -> PPO:
         experiment = client.get_experiment_by_name("strategy-policy")
         if experiment is None:
             raise RuntimeError(
-                "MLflow experiment 'strategy-policy' not found. "
-                "Run `make train-policy` first."
+                "MLflow experiment 'strategy-policy' not found. Run `make train-policy` first."
             )
         runs = client.search_runs(
             experiment_ids=[experiment.experiment_id],
@@ -67,9 +65,7 @@ def load_policy(run_id: str | None = None) -> PPO:
             max_results=1,
         )
         if not runs:
-            raise RuntimeError(
-                "No completed training runs found. Run `make train-policy` first."
-            )
+            raise RuntimeError("No completed training runs found. Run `make train-policy` first.")
         run_id = runs[0].info.run_id
 
     with tempfile.TemporaryDirectory() as tmpdir:

@@ -4,4 +4,4 @@ from .bronze import BronzeLapSchema
 from .gold import GoldLapSchema
 from .silver import SilverLapSchema
 
-__all__ = ["BronzeLapSchema", "SilverLapSchema", "GoldLapSchema"]
+__all__ = ["BronzeLapSchema", "GoldLapSchema", "SilverLapSchema"]

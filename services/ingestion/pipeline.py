@@ -18,6 +18,7 @@ import mlflow
 import typer
 from prefect import flow, task
 from prefect.artifacts import create_table_artifact
+from prefect.cache_policies import NO_CACHE
 
 from .config import IngestionSettings
 from .fastf1_client import FastF1Client
@@ -34,7 +35,7 @@ app = typer.Typer(add_completion=False)
 # ---------------------------------------------------------------------------
 
 
-@task(name="fetch-bronze", retries=2, retry_delay_seconds=30)
+@task(name="fetch-bronze", retries=2, retry_delay_seconds=30, cache_policy=NO_CACHE)
 def fetch_and_store_bronze(
     client: FastF1Client,
     storage: ObjectStorage,
@@ -67,7 +68,7 @@ def fetch_and_store_bronze(
     return key
 
 
-@task(name="transform-to-silver")
+@task(name="transform-to-silver", cache_policy=NO_CACHE)
 def transform_to_silver_task(
     storage: ObjectStorage,
     settings: IngestionSettings,
@@ -98,7 +99,7 @@ def transform_to_silver_task(
     return key
 
 
-@task(name="transform-to-gold")
+@task(name="transform-to-gold", cache_policy=NO_CACHE)
 def transform_to_gold_task(
     storage: ObjectStorage,
     settings: IngestionSettings,
@@ -164,16 +165,18 @@ def ingest_session(
     mlflow.set_experiment(settings.mlflow_experiment_name)
 
     with mlflow.start_run(run_name=f"ingest-{year}-R{round_number:02d}-{session}"):
-        mlflow.log_params(
-            {"year": year, "round_number": round_number, "session": session}
-        )
+        mlflow.log_params({"year": year, "round_number": round_number, "session": session})
 
         client = FastF1Client(settings)
         storage = ObjectStorage(settings)
 
         bronze_key = fetch_and_store_bronze(client, storage, settings, year, round_number, session)
-        silver_key = transform_to_silver_task(storage, settings, bronze_key, year, round_number, session)
-        gold_key = transform_to_gold_task(storage, settings, silver_key, year, round_number, session, total_laps)
+        silver_key = transform_to_silver_task(
+            storage, settings, bronze_key, year, round_number, session
+        )
+        gold_key = transform_to_gold_task(
+            storage, settings, silver_key, year, round_number, session, total_laps
+        )
 
         keys = {"bronze": bronze_key, "silver": silver_key, "gold": gold_key}
         mlflow.log_params({f"{layer}_key": key for layer, key in keys.items()})
@@ -199,7 +202,9 @@ def main(
     round: Annotated[int, typer.Option("--round", help="Race round number.")] = 1,
     session: Annotated[str, typer.Option("--session", help="Session type (R/Q/FP1…).")] = "R",
     total_laps: Annotated[int, typer.Option("--total-laps", help="Scheduled race laps.")] = 57,
-    all_rounds: Annotated[bool, typer.Option("--all-rounds", help="Ingest every round in the season.")] = False,
+    all_rounds: Annotated[
+        bool, typer.Option("--all-rounds", help="Ingest every round in the season.")
+    ] = False,
 ) -> None:
     """CLI wrapper around the ``ingest_session`` Prefect flow."""
     if all_rounds:

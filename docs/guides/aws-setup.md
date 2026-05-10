@@ -111,7 +111,7 @@ table to prevent concurrent runs from corrupting it.  We create these once
 with a tiny bootstrap module (its own local state is fine — the bucket rarely
 changes).
 
-```bash
+```powershell
 cd infra/terraform/aws/bootstrap
 
 terraform init
@@ -152,17 +152,34 @@ terraform {
 
 This is all you need to start ingesting data.  EKS comes in Phase 2.
 
-```bash
+```powershell
 # Copy and review variable defaults:
-cp terraform.tfvars.example terraform.tfvars
+Copy-Item terraform.tfvars.example terraform.tfvars
 
 terraform init
-terraform apply -target=aws_s3_bucket.data_lake \
-                -target=aws_s3_bucket_versioning.data_lake \
-                -target=aws_s3_bucket_server_side_encryption_configuration.data_lake \
-                -target=aws_s3_bucket_lifecycle_configuration.data_lake \
-                -target=aws_ecr_repository.training
 ```
+
+Then apply Phase 1 via the Makefile (handles line continuation correctly on all platforms):
+
+```powershell
+# Run from the repo root:
+make tf-apply-phase1
+```
+
+<details>
+<summary>Raw terraform command (PowerShell — note the backtick line continuation)</summary>
+
+```powershell
+terraform apply `
+  -target=aws_s3_bucket.data_lake `
+  -target=aws_s3_bucket_versioning.data_lake `
+  -target=aws_s3_bucket_server_side_encryption_configuration.data_lake `
+  -target=aws_s3_bucket_public_access_block.data_lake `
+  -target=aws_s3_bucket_lifecycle_configuration.data_lake `
+  -target=aws_ecr_repository.training `
+  -target=aws_ecr_lifecycle_policy.training
+```
+</details>
 
 When it completes, note the outputs:
 ```
@@ -174,27 +191,27 @@ ecr_registry   = "<account-id>.dkr.ecr.us-east-1.amazonaws.com"
 
 ## Step 7 — Run the ingestion pipeline into S3
 
-Set your environment variables (or add them to `.env`):
-```bash
-export PITWALL_STORAGE_BACKEND=s3
-export PITWALL_AWS_REGION=us-east-1
-export PITWALL_AWS_S3_BUCKET=pitwall-ai-prod    # from terraform output
+Set your environment variables in PowerShell (or add them to `.env`):
+```powershell
+$env:PITWALL_STORAGE_BACKEND = "s3"
+$env:PITWALL_AWS_REGION      = "us-east-1"
+$env:PITWALL_AWS_S3_BUCKET   = "pitwall-ai-prod"   # from terraform output s3_bucket_name
 ```
 
 Run ingestion for one race to verify the pipeline works end-to-end:
-```bash
+```powershell
 make ingest SEASON=2024 ROUND=1 SESSION=R
 ```
 
 Check the data landed in S3:
-```bash
+```powershell
 aws s3 ls s3://pitwall-ai-prod/bronze/ --recursive
 aws s3 ls s3://pitwall-ai-prod/silver/ --recursive
 aws s3 ls s3://pitwall-ai-prod/gold/   --recursive
 ```
 
 Once verified, ingest a full season:
-```bash
+```powershell
 make ingest-season SEASON=2024
 ```
 
@@ -246,14 +263,12 @@ make submit-train-policy EKS_CLUSTER=pitwall-prod
 
 ## Teardown (stop incurring EKS charges)
 
-```bash
-# Destroy only EKS (keeps S3 data intact):
-terraform destroy \
-  -target=module.eks \
-  -target=module.vpc
+```powershell
+# Destroy only EKS (keeps S3 data intact) — use the Makefile target:
+make tf-destroy-eks
 
 # Full teardown (deletes S3 data too — careful!):
-terraform destroy
+make tf-destroy
 ```
 
 ---

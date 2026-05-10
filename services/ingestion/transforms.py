@@ -16,7 +16,6 @@ import numpy as np
 import pandas as pd
 import pandera as pa
 
-from .schemas.bronze import BronzeLapSchema
 from .schemas.gold import GoldLapSchema
 from .schemas.silver import SilverLapSchema
 
@@ -85,8 +84,11 @@ def bronze_to_silver(
             "Position": "position",
             "TrackStatus": "track_status",
             "IsAccurate": "is_accurate",
+            "Team": "team",
         }
     )
+    if "team" not in out.columns:
+        out["team"] = "UNKNOWN"
 
     # --- Timedelta → seconds ---
     for src, dst in [
@@ -106,9 +108,7 @@ def bronze_to_silver(
     out["pit_out_this_lap"] = out.get("PitOutTime", pd.Series(dtype=object)).notna()
 
     # --- Compound normalisation ---
-    out["compound"] = (
-        out["compound"].fillna("UNKNOWN").str.upper().replace({"": "UNKNOWN"})
-    )
+    out["compound"] = out["compound"].fillna("UNKNOWN").str.upper().replace({"": "UNKNOWN"})
 
     # --- Select and order final columns ---
     silver_cols = list(SilverLapSchema.to_schema().columns.keys())
@@ -137,6 +137,14 @@ def silver_to_gold(df: pd.DataFrame, total_laps: int) -> pd.DataFrame:
     """
     out = df.copy()
 
+    # --- Feast event_timestamp — synthetic race date (year + round → approx date) ---
+    year_val = int(out["year"].iloc[0])
+    round_val = int(out["round_number"].iloc[0])
+    race_date = pd.Timestamp(year=year_val, month=3, day=1, tz="UTC") + pd.Timedelta(
+        weeks=(round_val - 1) * 2
+    )
+    out["event_timestamp"] = race_date
+
     # --- race_progress ---
     out["race_progress"] = (out["lap_number"] / total_laps).clip(0.0, 1.0)
 
@@ -152,9 +160,7 @@ def silver_to_gold(df: pd.DataFrame, total_laps: int) -> pd.DataFrame:
     # --- Per-driver, per-stint features ---
     group_driver_stint = out.groupby(["driver_code", "stint_number"], sort=False)
 
-    out["lap_time_delta_s"] = group_driver_stint["lap_time_s"].transform(
-        lambda s: s - s.median()
-    )
+    out["lap_time_delta_s"] = group_driver_stint["lap_time_s"].transform(lambda s: s - s.median())
     out["rolling_lap_time_3_s"] = group_driver_stint["lap_time_s"].transform(
         lambda s: s.rolling(3, min_periods=1).mean()
     )
@@ -166,6 +172,10 @@ def silver_to_gold(df: pd.DataFrame, total_laps: int) -> pd.DataFrame:
     out["position_change_this_stint"] = group_driver_stint["position"].transform(
         lambda s: s - s.iloc[0]
     )
+
+    # --- Team relative pace: driver lap time vs field median for that lap ---
+    field_median = out.groupby("lap_number")["lap_time_s"].transform("median")
+    out["lap_delta_to_field_median_s"] = out["lap_time_s"] - field_median
 
     return out
 
@@ -222,7 +232,7 @@ def _compute_deg_rate(group: pd.DataFrame) -> pd.Series:  # type: ignore[type-ar
     meaningful regression).
     """
     valid = group[["tyre_life_laps", "lap_time_s"]].dropna()
-    if len(valid) < 3:  # noqa: PLR2004
+    if len(valid) < 3:
         return pd.Series(np.nan, index=group.index)
 
     x = valid["tyre_life_laps"].values

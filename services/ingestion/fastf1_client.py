@@ -77,7 +77,7 @@ class FastF1Client:
                 f"Failed to load session {year} R{round_number} {session_type}: {exc}"
             ) from exc
 
-        laps: pd.DataFrame = session.laps.copy()
+        laps: pd.DataFrame = pd.DataFrame(session.laps)
         logger.info(
             "Loaded %d laps for %d R%d %s",
             len(laps),

@@ -49,7 +49,7 @@ Reward:
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, ClassVar
 
 import numpy as np
 import pandas as pd
@@ -61,6 +61,7 @@ except ImportError as exc:  # pragma: no cover
     raise ImportError("Install gymnasium: uv add gymnasium>=0.29") from exc
 
 from ml.models.safety_car.predict import predict_sc_probability
+
 from services.simulator.lap_simulator import (
     PIT_LOSS_S,
     driver_baseline_delta,
@@ -87,15 +88,15 @@ _RP_STEP: float = 1.0 / _RP_BINS
 _MAX_TYRE_LIFE: int = 65  # table covers laps 0–64
 
 _PIT_LOSS_BY_ROUND: dict[int, float] = {
-    1: 23.0,   # Bahrain
-    2: 23.0,   # Saudi Arabia
-    3: 22.0,   # Australia
-    4: 24.0,   # Japan
-    5: 22.0,   # China
-    6: 23.0,   # Miami
-    7: 26.0,   # Emilia Romagna
-    8: 25.0,   # Monaco
-    9: 22.0,   # Canada
+    1: 23.0,  # Bahrain
+    2: 23.0,  # Saudi Arabia
+    3: 22.0,  # Australia
+    4: 24.0,  # Japan
+    5: 22.0,  # China
+    6: 23.0,  # Miami
+    7: 26.0,  # Emilia Romagna
+    8: 25.0,  # Monaco
+    9: 22.0,  # Canada
     10: 22.0,  # Spain
     11: 21.0,  # Austria
     12: 22.0,  # Britain
@@ -124,7 +125,7 @@ _WET_COMPOUNDS: frozenset[int] = frozenset({3, 4})
 # compound_encoded:  0=SOFT  1=MEDIUM  2=HARD  3=INTER  4=WET  5=UNKNOWN
 # ---------------------------------------------------------------------------
 _BASE_DEGRADE_RATE: dict[int, float] = {0: 0.08, 1: 0.05, 2: 0.03, 3: 0.01, 4: 0.01, 5: 0.05}
-_BASE_CLIFF_LAP: dict[int, int]      = {0: 22,   1: 32,   2: 42,   3: 50,   4: 50,   5: 35}
+_BASE_CLIFF_LAP: dict[int, int] = {0: 22, 1: 32, 2: 42, 3: 50, 4: 50, 5: 35}
 
 # ---------------------------------------------------------------------------
 # Circuit-specific degradation multipliers (indexed by 2024 round number).
@@ -135,15 +136,15 @@ _BASE_CLIFF_LAP: dict[int, int]      = {0: 22,   1: 32,   2: 42,   3: 50,   4: 5
 # Calibrated from Pirelli technical data and observed 2024 stint lengths.
 # ---------------------------------------------------------------------------
 _CIRCUIT_DEGRADE_MULT: dict[int, float] = {
-    1:  1.20,  # Bahrain       — abrasive tarmac, high track temp
-    2:  1.00,  # Saudi Arabia
-    3:  0.90,  # Australia     — smooth Albert Park surface
-    4:  0.85,  # Japan         — smooth Suzuka, cool conditions
-    5:  1.10,  # China         — medium-high wear
-    6:  1.15,  # Miami         — rough surface, tropical heat
-    7:  0.95,  # Emilia Romagna
-    8:  0.45,  # Monaco        — slow streets, tyres barely degrade
-    9:  0.90,  # Canada        — heavy braking but cool
+    1: 1.20,  # Bahrain       — abrasive tarmac, high track temp
+    2: 1.00,  # Saudi Arabia
+    3: 0.90,  # Australia     — smooth Albert Park surface
+    4: 0.85,  # Japan         — smooth Suzuka, cool conditions
+    5: 1.10,  # China         — medium-high wear
+    6: 1.15,  # Miami         — rough surface, tropical heat
+    7: 0.95,  # Emilia Romagna
+    8: 0.45,  # Monaco        — slow streets, tyres barely degrade
+    9: 0.90,  # Canada        — heavy braking but cool
     10: 1.35,  # Spain         — famously brutal on tyres (Turn 9)
     11: 1.00,  # Austria
     12: 1.25,  # Britain       — Silverstone high-speed corners
@@ -162,8 +163,8 @@ _CIRCUIT_DEGRADE_MULT: dict[int, float] = {
 }
 
 _CIRCUIT_CLIFF_MULT: dict[int, float] = {
-    1:  0.85,  # Bahrain    — early cliff under heat
-    8:  1.60,  # Monaco     — tyres last virtually the whole race
+    1: 0.85,  # Bahrain    — early cliff under heat
+    8: 1.60,  # Monaco     — tyres last virtually the whole race
     10: 0.80,  # Spain      — earliest cliff on calendar
     12: 0.85,  # Britain
     16: 1.40,  # Monza      — long stints entirely viable
@@ -259,7 +260,7 @@ class F1RaceEnv(gym.Env):
         noise_std: Gaussian noise std added to simulated lap times (default 0.2 s).
     """
 
-    metadata: dict[str, Any] = {"render_modes": []}
+    metadata: ClassVar[dict[str, Any]] = {"render_modes": []}
 
     def __init__(
         self,
@@ -307,20 +308,14 @@ class F1RaceEnv(gym.Env):
         """
         self._driver_number = driver_number
         agent_mask = race_df["driver_number"] == driver_number
-        self._agent_df = (
-            race_df[agent_mask].sort_values("lap_number").reset_index(drop=True)
-        )
+        self._agent_df = race_df[agent_mask].sort_values("lap_number").reset_index(drop=True)
 
         self._total_laps: int = int(race_df["lap_number"].max())
         self._n_drivers: int = int(race_df["driver_number"].nunique())
         self._field_medians: pd.Series = field_median_by_lap(race_df)
         self._baseline_delta: float = driver_baseline_delta(self._agent_df)
 
-        round_num = (
-            int(race_df["round_number"].iloc[0])
-            if "round_number" in race_df.columns
-            else 0
-        )
+        round_num = int(race_df["round_number"].iloc[0]) if "round_number" in race_df.columns else 0
         self._pit_loss_s = _PIT_LOSS_BY_ROUND.get(round_num, self._pit_loss_s)
 
         # Circuit + temperature calibrated degradation parameters.
@@ -364,9 +359,9 @@ class F1RaceEnv(gym.Env):
             NumPy array of shape (6, _MAX_TYRE_LIFE, _RP_BINS, 2).
         """
         n_rows = 6 * _MAX_TYRE_LIFE * _RP_BINS * 2
-        compounds    = np.empty(n_rows, dtype=np.int32)
-        tyre_lives   = np.empty(n_rows, dtype=np.int32)
-        race_progs   = np.empty(n_rows, dtype=np.float32)
+        compounds = np.empty(n_rows, dtype=np.int32)
+        tyre_lives = np.empty(n_rows, dtype=np.int32)
+        race_progs = np.empty(n_rows, dtype=np.float32)
         is_fresh_arr = np.empty(n_rows, dtype=np.int32)
 
         i = 0
@@ -375,20 +370,24 @@ class F1RaceEnv(gym.Env):
                 for rp_idx in range(_RP_BINS):
                     rp = (rp_idx + 0.5) * _RP_STEP  # bin midpoint
                     for fresh in range(2):
-                        compounds[i]    = c
-                        tyre_lives[i]   = tl
-                        race_progs[i]   = rp
+                        compounds[i] = c
+                        tyre_lives[i] = tl
+                        race_progs[i] = rp
                         is_fresh_arr[i] = fresh
                         i += 1
 
-        df = pd.DataFrame({
-            "tyre_life_laps":              tyre_lives,
-            "compound_encoded":            compounds,
-            "race_progress":               race_progs,
-            "track_status_encoded":        np.zeros(n_rows, dtype=np.int32),
-            "is_fresh_tyre":               is_fresh_arr,
-            "lap_delta_to_field_median_s": np.full(n_rows, self._baseline_delta, dtype=np.float32),
-        })
+        df = pd.DataFrame(
+            {
+                "tyre_life_laps": tyre_lives,
+                "compound_encoded": compounds,
+                "race_progress": race_progs,
+                "track_status_encoded": np.zeros(n_rows, dtype=np.int32),
+                "is_fresh_tyre": is_fresh_arr,
+                "lap_delta_to_field_median_s": np.full(
+                    n_rows, self._baseline_delta, dtype=np.float32
+                ),
+            }
+        )
         preds = self._tire_model.predict(df)
         return np.asarray(preds, dtype=np.float32).reshape(6, _MAX_TYRE_LIFE, _RP_BINS, 2)
 
@@ -437,9 +436,9 @@ class F1RaceEnv(gym.Env):
         for lap, grp in race_df.groupby("lap_number"):
             compounds = grp["compound_encoded"].dropna().values
             if len(compounds):
-                self._wet_fraction_arr[int(lap)] = (
-                    np.isin(compounds.astype(int), wet_set).sum() / len(compounds)
-                )
+                self._wet_fraction_arr[int(lap)] = np.isin(
+                    compounds.astype(int), wet_set
+                ).sum() / len(compounds)
 
         # Precompute track status per lap as array for O(1) lookup.
         self._track_status_arr = np.zeros(total + 1, dtype=np.int32)
@@ -508,9 +507,7 @@ class F1RaceEnv(gym.Env):
 
         return self._build_obs(), {}
 
-    def step(
-        self, action: int
-    ) -> tuple[np.ndarray, float, bool, bool, dict[str, Any]]:
+    def step(self, action: int) -> tuple[np.ndarray, float, bool, bool, dict[str, Any]]:
         """Advance one lap.
 
         Args:
@@ -558,7 +555,9 @@ class F1RaceEnv(gym.Env):
             self._last_sc_prob = 0.0
 
         # Blend: 30% LightGBM model + 70% physics-based synthetic degradation.
-        syn_deg = _synthetic_deg(self._compound, self._tyre_life, self._degrade_rate, self._cliff_lap)
+        syn_deg = _synthetic_deg(
+            self._compound, self._tyre_life, self._degrade_rate, self._cliff_lap
+        )
         blended_delta = 0.3 * tire_delta + 0.7 * syn_deg
         field_med = float(self._field_medians.get(self._lap) or 90.0)
         noise = float(self.np_random.normal(0.0, self._noise_std))
@@ -689,13 +688,10 @@ class F1RaceEnv(gym.Env):
             self._gap_behind_s = float(behind_times[best] - agent_cum)
             self._tyre_age_behind = int(self._field_tyre_age_arr[gi, lap])
             self._undercut_threat = float(
-                self._gap_behind_s < 3.0
-                and self._tyre_age_behind < self._tyre_life
+                self._gap_behind_s < 3.0 and self._tyre_age_behind < self._tyre_life
             )
             pit_window = self._pit_loss_s + 5.0
-            self._cars_lose_if_pit = int(
-                np.sum(behind_times - agent_cum < pit_window)
-            )
+            self._cars_lose_if_pit = int(np.sum(behind_times - agent_cum < pit_window))
         else:
             self._gap_behind_s = 60.0
             self._tyre_age_behind = 15
@@ -704,7 +700,9 @@ class F1RaceEnv(gym.Env):
 
     def _build_obs(self) -> np.ndarray:
         """Construct the 20-dimensional float32 observation vector."""
-        syn_deg = _synthetic_deg(self._compound, self._tyre_life, self._degrade_rate, self._cliff_lap)
+        syn_deg = _synthetic_deg(
+            self._compound, self._tyre_life, self._degrade_rate, self._cliff_lap
+        )
         wet_frac = self._wet_fraction_now
         return np.array(
             [

@@ -9,15 +9,12 @@ Integration mode: reads from MinIO (requires ``make up``).
 
 from __future__ import annotations
 
-import numpy as np
 import pandas as pd
-import pandera as pa
 import pytest
-
 from services.ingestion.schemas.bronze import BronzeLapSchema
 from services.ingestion.schemas.gold import GoldLapSchema
 from services.ingestion.schemas.silver import SilverLapSchema
-from services.ingestion.transforms import bronze_to_silver, silver_to_gold
+from services.ingestion.transforms import silver_to_gold
 
 
 class TestBronzeContracts:
@@ -62,9 +59,7 @@ class TestSilverContracts:
         assert silver_laps_df["pit_in_this_lap"].dtype == bool
         assert silver_laps_df["pit_out_this_lap"].dtype == bool
 
-    def test_pit_in_and_out_mutually_exclusive_per_lap(
-        self, silver_laps_df: pd.DataFrame
-    ) -> None:
+    def test_pit_in_and_out_mutually_exclusive_per_lap(self, silver_laps_df: pd.DataFrame) -> None:
         both_set = silver_laps_df["pit_in_this_lap"] & silver_laps_df["pit_out_this_lap"]
         assert not both_set.any(), "A lap cannot simultaneously be a pit-in and pit-out lap"
 
@@ -80,7 +75,7 @@ class TestSilverContracts:
 class TestGoldContracts:
     """Contracts that must hold after the silver → gold transform."""
 
-    @pytest.fixture()
+    @pytest.fixture
     def gold_laps_df(self, silver_laps_df: pd.DataFrame) -> pd.DataFrame:
         return silver_to_gold(silver_laps_df, total_laps=57)
 

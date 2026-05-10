@@ -6,12 +6,11 @@ boto3 is mocked throughout — no real S3 / MinIO calls are made.
 from __future__ import annotations
 
 import io
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pandas as pd
 import pytest
 from botocore.exceptions import ClientError
-
 from services.ingestion.storage import ObjectStorage, build_parquet_key
 
 
@@ -39,7 +38,7 @@ class TestObjectStorage:
     def test_minio_bucket_created_when_missing(
         self,
         mock_s3: MagicMock,
-        settings: "IngestionSettings",  # type: ignore[name-defined]  # noqa: F821
+        settings: IngestionSettings,  # type: ignore[name-defined]  # noqa: F821
     ) -> None:
         """MinIO backend auto-creates a missing bucket (dev convenience)."""
         from services.ingestion.storage import ObjectStorage
@@ -50,7 +49,7 @@ class TestObjectStorage:
     def test_s3_backend_raises_when_bucket_missing(
         self,
         mock_s3: MagicMock,
-        settings: "IngestionSettings",  # type: ignore[name-defined]  # noqa: F821
+        settings: IngestionSettings,  # type: ignore[name-defined]  # noqa: F821
     ) -> None:
         """S3 backend must never auto-create buckets — Terraform owns that."""
         from services.ingestion.storage import ObjectStorage
@@ -64,7 +63,7 @@ class TestObjectStorage:
     def test_write_parquet_calls_put_object(
         self,
         mock_s3: MagicMock,
-        settings: "IngestionSettings",  # type: ignore[name-defined]  # noqa: F821
+        settings: IngestionSettings,  # type: ignore[name-defined]  # noqa: F821
     ) -> None:
         storage = ObjectStorage(settings)
         df = pd.DataFrame({"a": [1, 2], "b": [3.0, 4.0]})
@@ -77,7 +76,7 @@ class TestObjectStorage:
     def test_read_parquet_deserialises_correctly(
         self,
         mock_s3: MagicMock,
-        settings: "IngestionSettings",  # type: ignore[name-defined]  # noqa: F821
+        settings: IngestionSettings,  # type: ignore[name-defined]  # noqa: F821
     ) -> None:
         expected = pd.DataFrame({"x": [10, 20]})
         buf = io.BytesIO()
@@ -92,7 +91,7 @@ class TestObjectStorage:
     def test_read_parquet_missing_key_raises_key_error(
         self,
         mock_s3: MagicMock,
-        settings: "IngestionSettings",  # type: ignore[name-defined]  # noqa: F821
+        settings: IngestionSettings,  # type: ignore[name-defined]  # noqa: F821
     ) -> None:
         mock_s3.get_object.side_effect = ClientError(
             {"Error": {"Code": "NoSuchKey", "Message": "Not Found"}}, "GetObject"
@@ -104,7 +103,7 @@ class TestObjectStorage:
     def test_key_exists_returns_true_when_object_found(
         self,
         mock_s3: MagicMock,
-        settings: "IngestionSettings",  # type: ignore[name-defined]  # noqa: F821
+        settings: IngestionSettings,  # type: ignore[name-defined]  # noqa: F821
     ) -> None:
         mock_s3.head_object.return_value = {}  # success
         storage = ObjectStorage(settings)
@@ -113,7 +112,7 @@ class TestObjectStorage:
     def test_key_exists_returns_false_when_missing(
         self,
         mock_s3: MagicMock,
-        settings: "IngestionSettings",  # type: ignore[name-defined]  # noqa: F821
+        settings: IngestionSettings,  # type: ignore[name-defined]  # noqa: F821
     ) -> None:
         mock_s3.head_object.side_effect = ClientError(
             {"Error": {"Code": "404", "Message": "Not Found"}}, "HeadObject"

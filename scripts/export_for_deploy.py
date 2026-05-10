@@ -54,9 +54,7 @@ def main() -> None:
     exp = client.get_experiment_by_name("strategy-policy")
     if exp is None:
         raise RuntimeError("MLflow experiment 'strategy-policy' not found. Train policy first.")
-    runs = client.search_runs(
-        [exp.experiment_id], order_by=["start_time DESC"], max_results=1
-    )
+    runs = client.search_runs([exp.experiment_id], order_by=["start_time DESC"], max_results=1)
     if not runs:
         raise RuntimeError("No policy training runs found. Run make train-policy first.")
     run_id = runs[0].info.run_id
@@ -67,7 +65,7 @@ def main() -> None:
 
     # 2024 gold data
     logger.info("Exporting gold data...")
-    from ml.models._loader import load_gold_seasons  # noqa: PLC0415
+    from ml.models._loader import load_gold_seasons
 
     # Temporarily ensure we read from S3/MinIO, not local (avoid circular)
     orig = os.environ.pop("PITWALL_STORAGE_BACKEND", None)
@@ -79,7 +77,8 @@ def main() -> None:
 
     out_path = data_out / "gold_2024.parquet"
     df.to_parquet(out_path, index=False)
-    logger.info("  -> data/gold_2024.parquet  (%d rows, %.1f MB)", len(df), out_path.stat().st_size / 1e6)
+    size_mb = out_path.stat().st_size / 1e6
+    logger.info("  -> data/gold_2024.parquet  (%d rows, %.1f MB)", len(df), size_mb)
 
     logger.info("Export complete. Run `docker build -t pitwall-ai .` to rebuild the image.")
 

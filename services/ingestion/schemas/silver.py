@@ -22,12 +22,13 @@ class SilverLapSchema(pa.DataFrameModel):
     round_number: Series[int] = pa.Field(ge=1, le=24)
     session: Series[str] = pa.Field(isin=["FP1", "FP2", "FP3", "Q", "SQ", "R", "S"])
 
-    # Driver identifiers
+    # Driver / team identifiers
     driver_code: Series[str] = pa.Field(
         str_length={"min_value": 2, "max_value": 3},
         description="Three-letter driver abbreviation.",
     )
     driver_number: Series[str] = pa.Field()
+    team: Series[str] = pa.Field(description="Constructor name as reported by FastF1.")
 
     # Lap identifiers
     lap_number: Series[int] = pa.Field(ge=1)
@@ -58,5 +59,5 @@ class SilverLapSchema(pa.DataFrameModel):
     is_accurate: Series[bool] = pa.Field()
 
     class Config:
-        strict = True   # no extra columns — silver is the canonical contract
+        strict = True  # no extra columns — silver is the canonical contract
         coerce = True
