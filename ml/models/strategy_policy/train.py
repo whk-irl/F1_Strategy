@@ -33,6 +33,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from services.simulator.env import F1RaceEnv
 from stable_baselines3 import PPO
 from stable_baselines3.common.callbacks import BaseCallback
+from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.vec_env import DummyVecEnv
 
 from ml.models._loader import load_gold_seasons
@@ -54,7 +55,7 @@ class StrategyPolicyConfig(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="PITWALL_PPO_", env_file=".env", extra="ignore")
 
     training_seasons: list[int] = Field(default=[2024])
-    total_timesteps: int = Field(default=1_000_000)
+    total_timesteps: int = Field(default=3_000_000)
     n_envs: int = Field(default=4)
     n_steps: int = Field(default=2048)
     batch_size: int = Field(default=64)
@@ -232,13 +233,15 @@ def train(config: StrategyPolicyConfig | None = None) -> None:
     if not race_pool:
         raise RuntimeError("Race pool is empty. Ingest data first or lower --min-drivers.")
 
-    def _make_env() -> gym.Env[np.ndarray, np.ndarray]:
-        return MultiRaceEnv(
-            race_pool,
-            tire_model,
-            sc_model,
-            config.pit_loss_s,
-            config.noise_std,
+    def _make_env() -> Monitor:
+        return Monitor(
+            MultiRaceEnv(
+                race_pool,
+                tire_model,
+                sc_model,
+                config.pit_loss_s,
+                config.noise_std,
+            )
         )
 
     vec_env = DummyVecEnv([_make_env for _ in range(config.n_envs)])
@@ -258,26 +261,26 @@ def train(config: StrategyPolicyConfig | None = None) -> None:
         mlflow.log_params(
             {
                 **ppo_hparams,
-                "net_arch": "128x64",
-                "device": "cpu",
+                "net_arch": "256x128",
                 "training_seasons": config.training_seasons,
                 "n_envs": config.n_envs,
                 "total_timesteps": config.total_timesteps,
                 "race_pool_size": len(race_pool),
                 "pit_loss_s": config.pit_loss_s,
-                "obs_dim": 20,
+                "obs_dim": 21,
             }
         )
 
         model = PPO(
             policy="MlpPolicy",
             env=vec_env,
-            policy_kwargs={"net_arch": [128, 64]},  # wider first layer for 20-dim obs
-            device="cpu",
+            policy_kwargs={"net_arch": [256, 128]},  # wider network for 21-dim obs
+            device="auto",  # uses CUDA if available, falls back to CPU
             verbose=1,
             **ppo_hparams,
         )
 
+        mlflow.log_param("device", str(model.device))
         logger.info(
             "Training PPO on device: %s | %d timesteps across %d envs",
             model.device,
@@ -319,7 +322,7 @@ def main(
     timesteps: Annotated[
         int,
         typer.Option("--timesteps", help="Total PPO training timesteps."),
-    ] = 1_000_000,
+    ] = 3_000_000,
     n_envs: Annotated[
         int,
         typer.Option("--n-envs", help="Number of parallel environments."),
@@ -372,13 +375,15 @@ def finetune(
     gold_df = load_gold_seasons(config.training_seasons)
     race_pool = build_race_pool(gold_df, config.min_drivers_per_race)
 
-    def _make_env() -> gym.Env[np.ndarray, np.ndarray]:
-        return MultiRaceEnv(race_pool, tire_model, sc_model, config.pit_loss_s, config.noise_std)
+    def _make_env() -> Monitor:
+        return Monitor(
+            MultiRaceEnv(race_pool, tire_model, sc_model, config.pit_loss_s, config.noise_std)
+        )
 
     vec_env = DummyVecEnv([_make_env for _ in range(config.n_envs)])
 
     logger.info("Loading checkpoint: %s", checkpoint)
-    model = PPO.load(checkpoint, env=vec_env, device="cpu")
+    model = PPO.load(checkpoint, env=vec_env, device="auto")
 
     logger.info("Fine-tuning for %d additional timesteps...", timesteps)
     with mlflow.start_run():

@@ -27,7 +27,7 @@ class BronzeLapSchema(pa.DataFrameModel):
         description="Car number as a string (FastF1 convention).",
     )
     LapNumber: Series[int] = pa.Field(ge=1, description="1-based lap counter.")
-    Stint: Series[int] = pa.Field(ge=1, description="1-based stint counter.")
+    Stint: Series[float] = pa.Field(ge=1, nullable=True, description="1-based stint counter.")
 
     # Timing — timedeltas; NaT for in/out laps and laps with no crossing.
     LapTime: Series[pd.Timedelta] = pa.Field(nullable=True)
@@ -38,8 +38,7 @@ class BronzeLapSchema(pa.DataFrameModel):
     # Tire
     Compound: Series[str] = pa.Field(
         nullable=True,
-        isin=["SOFT", "MEDIUM", "HARD", "INTERMEDIATE", "WET", "UNKNOWN"],
-        description="Tire compound code from FastF1.",
+        description="Tire compound code from FastF1. Value-set check done in silver.",
     )
     TyreLife: Series[float] = pa.Field(nullable=True, ge=0)
     FreshTyre: Series[bool] = pa.Field(nullable=True)

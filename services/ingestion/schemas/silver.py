@@ -32,7 +32,7 @@ class SilverLapSchema(pa.DataFrameModel):
 
     # Lap identifiers
     lap_number: Series[int] = pa.Field(ge=1)
-    stint_number: Series[int] = pa.Field(ge=1)
+    stint_number: Series[float] = pa.Field(ge=1, nullable=True)
 
     # Timing (seconds; NaN for in-laps, out-laps, and incomplete laps)
     lap_time_s: Series[float] = pa.Field(nullable=True, ge=0.0)

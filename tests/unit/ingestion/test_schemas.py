@@ -28,11 +28,10 @@ class TestBronzeLapSchema:
         with pytest.raises(pa.errors.SchemaError):
             BronzeLapSchema.validate(df)
 
-    def test_invalid_compound_raises(self, bronze_laps_df: pd.DataFrame) -> None:
+    def test_null_compound_allowed(self, bronze_laps_df: pd.DataFrame) -> None:
         df = bronze_laps_df.copy()
-        df.loc[0, "Compound"] = "SUPER_SOFT"  # not a valid compound
-        with pytest.raises(pa.errors.SchemaError):
-            BronzeLapSchema.validate(df)
+        df.loc[0, "Compound"] = None  # e.g. Monaco where compound data is missing
+        BronzeLapSchema.validate(df)  # should not raise
 
     def test_null_lap_time_allowed(self, bronze_laps_df: pd.DataFrame) -> None:
         df = bronze_laps_df.copy()

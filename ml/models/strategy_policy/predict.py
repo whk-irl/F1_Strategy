@@ -87,7 +87,7 @@ def recommend_action(
     """Get the policy's pit-stop recommendation for the current race state.
 
     Args:
-        obs: 20-dimensional observation vector from :class:`F1RaceEnv`.
+        obs: 21-dimensional observation vector from :class:`F1RaceEnv`.
             See ``env.py`` for the full feature description.
         model: Loaded PPO model from :func:`load_policy`.
         deterministic: Use greedy action (True for deployment), stochastic
@@ -109,7 +109,7 @@ def recommend_action(
         raise ValueError(
             f"Observation has {obs_arr.shape[1]} features but this policy was "
             f"trained on {expected}. Re-train the policy with the current env: "
-            f"uv run python -m ml.models.strategy_policy.train main --timesteps 1000000"
+            f"uv run python -m ml.models.strategy_policy.train main --timesteps 3000000"
         )
     action, _ = model.predict(obs_arr, deterministic=deterministic)
     action_int = int(action[0] if hasattr(action, "__len__") else action)
@@ -125,7 +125,7 @@ def action_probabilities(
     Useful for explaining why the policy recommends a particular action.
 
     Args:
-        obs: 20-dimensional observation vector.
+        obs: 21-dimensional observation vector.
         model: Loaded PPO model.
 
     Returns:
@@ -140,7 +140,7 @@ def action_probabilities(
         raise ValueError(
             f"Observation has {obs_arr.shape[1]} features but this policy was "
             f"trained on {expected}. Re-train: "
-            f"uv run python -m ml.models.strategy_policy.train main --timesteps 1000000"
+            f"uv run python -m ml.models.strategy_policy.train main --timesteps 3000000"
         )
     obs_tensor = model.policy.obs_to_tensor(obs_arr)[0]
     with torch.no_grad():

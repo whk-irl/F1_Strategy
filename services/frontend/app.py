@@ -330,7 +330,7 @@ def main() -> None:
 
         st.divider()
         st.caption("Model info")
-        st.caption("PPO · 20-feature obs · 128×64 MLP")
+        st.caption("PPO · 21-feature obs · 256×128 MLP")
         st.caption("Trained on 2024 gold data (all 24 rounds)")
 
     # ── Load resources ───────────────────────────────────────────────────────

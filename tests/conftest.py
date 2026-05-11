@@ -22,6 +22,7 @@ from services.ingestion.config import IngestionSettings
 def settings() -> IngestionSettings:
     """Ingestion settings wired to test defaults (no real services required)."""
     return IngestionSettings(
+        storage_backend="minio",
         fastf1_cache_path=".fastf1_cache_test",
         minio_endpoint="localhost:9000",
         minio_access_key="test",

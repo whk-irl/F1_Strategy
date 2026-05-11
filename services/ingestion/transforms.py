@@ -108,7 +108,12 @@ def bronze_to_silver(
     out["pit_out_this_lap"] = out.get("PitOutTime", pd.Series(dtype=object)).notna()
 
     # --- Compound normalisation ---
-    out["compound"] = out["compound"].fillna("UNKNOWN").str.upper().replace({"": "UNKNOWN"})
+    out["compound"] = (
+        out["compound"]
+        .fillna("UNKNOWN")
+        .str.upper()
+        .replace({"": "UNKNOWN", "NONE": "UNKNOWN", "NAN": "UNKNOWN"})
+    )
 
     # --- Select and order final columns ---
     silver_cols = list(SilverLapSchema.to_schema().columns.keys())
