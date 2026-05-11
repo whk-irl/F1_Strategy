@@ -233,7 +233,7 @@ def train(config: StrategyPolicyConfig | None = None) -> None:
     if not race_pool:
         raise RuntimeError("Race pool is empty. Ingest data first or lower --min-drivers.")
 
-    def _make_env() -> Monitor:
+    def _make_env() -> Monitor[Any, Any]:
         return Monitor(
             MultiRaceEnv(
                 race_pool,
@@ -375,7 +375,7 @@ def finetune(
     gold_df = load_gold_seasons(config.training_seasons)
     race_pool = build_race_pool(gold_df, config.min_drivers_per_race)
 
-    def _make_env() -> Monitor:
+    def _make_env() -> Monitor[Any, Any]:
         return Monitor(
             MultiRaceEnv(race_pool, tire_model, sc_model, config.pit_loss_s, config.noise_std)
         )
