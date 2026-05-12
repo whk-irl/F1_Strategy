@@ -14,7 +14,6 @@ from services.live.obs_builder import (
     update_from_openf1,
 )
 
-
 # ---------------------------------------------------------------------------
 # encode_compound
 # ---------------------------------------------------------------------------
@@ -47,7 +46,7 @@ class TestEncodeCompound:
 
 class TestBuildObs:
     def _make_state(self, **kwargs: object) -> DriverLiveState:
-        defaults = dict(driver_number=44, total_laps=50)
+        defaults = {"driver_number": 44, "total_laps": 50}
         defaults.update(kwargs)  # type: ignore[arg-type]
         return DriverLiveState(**defaults)  # type: ignore[arg-type]
 
@@ -182,13 +181,17 @@ class TestUpdateFromOpenF1:
 
     def test_lap_time_recorded(self) -> None:
         state = self._base_state()
-        update_from_openf1(state, {"lap_number": 5, "lap_duration": 92.3}, None, None, 0, False, [], None)
+        update_from_openf1(
+            state, {"lap_number": 5, "lap_duration": 92.3}, None, None, 0, False, [], None
+        )
         assert state.last_lap_time_s == pytest.approx(92.3)
         assert 92.3 in state.lap_times_s
 
     def test_invalid_lap_time_ignored(self) -> None:
         state = self._base_state()
-        update_from_openf1(state, {"lap_number": 5, "lap_duration": None}, None, None, 0, False, [], None)
+        update_from_openf1(
+            state, {"lap_number": 5, "lap_duration": None}, None, None, 0, False, [], None
+        )
         assert state.last_lap_time_s is None
 
     def test_stint_updates_compound_and_tyre_life(self) -> None:
@@ -266,6 +269,8 @@ class TestUpdateFromOpenF1:
         state = self._base_state()
         for lap in range(1, 8):
             update_from_openf1(
-                state, {"lap_number": lap, "lap_duration": 90.0 + lap}, None, None, 0, False, [], None
+                state,
+                {"lap_number": lap, "lap_duration": 90.0 + lap},
+                None, None, 0, False, [], None
             )
         assert len(state.lap_times_s) == 5
