@@ -271,6 +271,11 @@ class TestUpdateFromOpenF1:
             update_from_openf1(
                 state,
                 {"lap_number": lap, "lap_duration": 90.0 + lap},
-                None, None, 0, False, [], None
+                None,
+                None,
+                0,
+                False,
+                [],
+                None,
             )
         assert len(state.lap_times_s) == 5
