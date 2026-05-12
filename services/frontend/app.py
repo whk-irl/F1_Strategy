@@ -23,7 +23,6 @@ load_dotenv()
 from ml.models._loader import load_gold_seasons
 from ml.models.strategy_policy.predict import (
     action_probabilities,
-    load_policy,
     recommend_action,
 )
 from stable_baselines3 import PPO
@@ -150,7 +149,9 @@ def _run_replay(
 
         # 1. Wet-weather override: policy only knows dry compounds (SOFT/MEDIUM/HARD).
         #    Switch to INTER when >50% of field is on wet compounds; WET when >80%.
-        wet_frac = float(env._wet_fraction_arr[current_lap]) if current_lap <= env._total_laps else 0.0
+        wet_frac = (
+            float(env._wet_fraction_arr[current_lap]) if current_lap <= env._total_laps else 0.0
+        )
         on_wet = env._compound in (3, 4)
         if not on_wet:
             if wet_frac >= 0.8:
