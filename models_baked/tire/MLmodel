@@ -1,4 +1,4 @@
-artifact_path: file:///C:/Users/whkirl/Documents/f1_strategy/F1_Strategy/mlruns/760921975306847858/models/m-4c35c1805a41480cbfe115f3b7d76489/artifacts
+artifact_path: file:C:/Users/wanghaokun/Documents/GitHub/F1_Strategy/F1_Strategy/mlruns/565402968224084867/models/m-85d437791c85434eb44b785fe833fdb1/artifacts
 flavors:
   lightgbm:
     code: null
@@ -13,11 +13,11 @@ flavors:
       conda: conda.yaml
       virtualenv: python_env.yaml
     loader_module: mlflow.lightgbm
-    python_version: 3.11.0
+    python_version: 3.12.13
 mlflow_version: 3.12.0
-model_id: m-4c35c1805a41480cbfe115f3b7d76489
-model_size_bytes: 181109
-model_uuid: m-4c35c1805a41480cbfe115f3b7d76489
+model_id: m-85d437791c85434eb44b785fe833fdb1
+model_size_bytes: 181122
+model_uuid: m-85d437791c85434eb44b785fe833fdb1
 prompts: null
-run_id: 88f6c8275aed4877a23f0641117fbaa5
-utc_time_created: '2026-05-11 17:24:08.560817'
+run_id: 5f78b37413a84881ab54362cbcbb7fcd
+utc_time_created: '2026-05-11 23:49:35.605922'

@@ -1,0 +1,19 @@
+{
+  "default": "ppo_v1_2022_2026",
+  "models": {
+    "ppo_v1_2022_2026": {
+      "label": "PPO v1 — 2022–2026 · 3 M steps",
+      "description": "Default policy. Trained on 5 seasons (2022–2026), 3 M timesteps, 256×128 MLP, pit-loss 25 s.",
+      "tire_uri": "models_baked/tire",
+      "sc_uri": "models_baked/sc",
+      "policy_path": "models_baked/policy/model/policy",
+      "tags": {
+        "training_seasons": "2022-2026",
+        "total_timesteps": 3000000,
+        "net_arch": "256x128",
+        "pit_loss_s": 25.0,
+        "gamma": 0.995
+      }
+    }
+  }
+}

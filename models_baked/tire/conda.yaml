@@ -1,8 +1,8 @@
 channels:
 - conda-forge
 dependencies:
-- python=3.11.0
-- pip<=25.2
+- python=3.12.13
+- pip
 - pip:
   - --extra-index-url https://download.pytorch.org/whl/cu121
   - a2wsgi==1.10.10

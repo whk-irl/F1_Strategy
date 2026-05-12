@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pitwall-ai"
-version = "0.2.0"
+version = "0.3.0"
 description = "Open-source F1 race strategy engine"
 readme = "README.md"
 license = { text = "MIT" }
@@ -44,6 +44,8 @@ dependencies = [
     "streamlit>=1.33",
     "plotly>=5.20",
     "python-dotenv>=1.0",
+    # Live timing
+    "requests>=2.31",
     # Utilities
     "scipy>=1.13",
     "scikit-learn>=1.4",
