@@ -94,12 +94,8 @@ def _load_models() -> tuple[Any, Any, Any]:
     # Override via env vars when running locally against a live MLflow registry.
     tracking_uri = os.getenv("PITWALL_MLFLOW_TRACKING_URI", "mlruns")
     mlflow.set_tracking_uri(tracking_uri)
-    tire = mlflow.pyfunc.load_model(
-        os.getenv("PITWALL_TIRE_MODEL_URI", "models_baked/tire")
-    )
-    sc = mlflow.pyfunc.load_model(
-        os.getenv("PITWALL_SC_MODEL_URI", "models_baked/sc")
-    )
+    tire = mlflow.pyfunc.load_model(os.getenv("PITWALL_TIRE_MODEL_URI", "models_baked/tire"))
+    sc = mlflow.pyfunc.load_model(os.getenv("PITWALL_SC_MODEL_URI", "models_baked/sc"))
     policy_path = os.getenv("PITWALL_POLICY_PATH", "models_baked/policy/model/policy")
     policy = PPO.load(policy_path, device="cpu")
     return tire, sc, policy
@@ -166,7 +162,7 @@ def _run_replay(
         laps_left = env._total_laps - current_lap
         if action == 0 and env._tyre_life >= cliff + 3 and laps_left > 5:
             best = {0: 1, 1: 2, 2: 3}.get(env._compound, 2)  # SOFT→MEDIUM, else HARD
-            action, label = best, f"Pit — {['SOFT','MEDIUM','HARD'][best-1]} ⚠"
+            action, label = best, f"Pit — {['SOFT', 'MEDIUM', 'HARD'][best - 1]} ⚠"
 
         # Actual team decision drives the simulation
         gold_row = agent_gold[agent_gold["lap_number"] == current_lap]
