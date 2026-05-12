@@ -271,6 +271,7 @@ class F1RaceEnv(gym.Env[np.ndarray, np.ndarray]):
         sc_model: Any | None = None,
         pit_loss_s: float = PIT_LOSS_S,
         noise_std: float = 0.2,
+        replay_mode: bool = False,
     ) -> None:
         super().__init__()
 
@@ -283,6 +284,9 @@ class F1RaceEnv(gym.Env[np.ndarray, np.ndarray]):
         self._sc_model = sc_model
         self._pit_loss_s = pit_loss_s
         self._noise_std = noise_std
+        # When True, step() uses actual recorded lap times instead of simulating,
+        # keeping cumulative race times aligned with the real race data.
+        self._replay_mode = replay_mode
 
         self._init_race(race_df, driver_number)
 
@@ -563,8 +567,20 @@ class F1RaceEnv(gym.Env[np.ndarray, np.ndarray]):
         )
         blended_delta = 0.3 * tire_delta + 0.7 * syn_deg
         field_med = float(self._field_medians.get(self._lap) or 90.0)
-        noise = float(self.np_random.normal(0.0, self._noise_std))
-        sim_lap = field_med + self._baseline_delta + blended_delta + noise
+
+        if self._replay_mode:
+            # Use actual recorded lap time so cumulative times — and therefore
+            # positions — stay aligned with the real race throughout the replay.
+            actual_row = self._agent_df[self._agent_df["lap_number"] == self._lap]
+            if not actual_row.empty:
+                t = float(actual_row.iloc[0].get("lap_time_s", np.nan))
+                sim_lap = t if np.isfinite(t) else field_med + self._baseline_delta + blended_delta
+            else:
+                sim_lap = field_med + self._baseline_delta + blended_delta
+        else:
+            noise = float(self.np_random.normal(0.0, self._noise_std))
+            sim_lap = field_med + self._baseline_delta + blended_delta + noise
+
         if is_pit:
             sim_lap += self._pit_loss_s
 

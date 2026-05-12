@@ -130,7 +130,8 @@ def _run_replay(
     its recommendation as commentary — this is what Pitwall AI would have said
     had it been in the pit wall that day.
     """
-    env = F1RaceEnv(race_df, driver_num, tire_model, sc_model)
+    # replay_mode=True: use actual recorded lap times so positions track real race.
+    env = F1RaceEnv(race_df, driver_num, tire_model, sc_model, replay_mode=True)
     obs, _ = env.reset()
 
     agent_gold = race_df[race_df["driver_number"] == driver_num].sort_values("lap_number")
@@ -144,6 +145,27 @@ def _run_replay(
         # Policy recommendation for this state (commentary only — not executed)
         action, label = recommend_action(obs, policy)
         probs = action_probabilities(obs, policy)
+
+        # --- Rule-based overrides on top of the policy ---
+
+        # 1. Wet-weather override: policy only knows dry compounds (SOFT/MEDIUM/HARD).
+        #    Switch to INTER when >50% of field is on wet compounds; WET when >80%.
+        wet_frac = float(env._wet_fraction_arr[current_lap]) if current_lap <= env._total_laps else 0.0
+        on_wet = env._compound in (3, 4)
+        if not on_wet:
+            if wet_frac >= 0.8:
+                action, label = 5, "Pit — WET"
+            elif wet_frac >= 0.5:
+                action, label = 4, "Pit — INTER"
+        elif on_wet and wet_frac < 0.2:
+            action, label = 2, "Pit — MEDIUM"  # conditions dried, switch back
+
+        # 2. Cliff override: nudge policy to pit when past the compound's optimal window.
+        cliff = env._cliff_lap.get(env._compound, 35)
+        laps_left = env._total_laps - current_lap
+        if action == 0 and env._tyre_life >= cliff + 3 and laps_left > 5:
+            best = {0: 1, 1: 2, 2: 3}.get(env._compound, 2)  # SOFT→MEDIUM, else HARD
+            action, label = best, f"Pit — {['SOFT','MEDIUM','HARD'][best-1]} ⚠"
 
         # Actual team decision drives the simulation
         gold_row = agent_gold[agent_gold["lap_number"] == current_lap]
