@@ -642,6 +642,12 @@ def main() -> None:
         policy_path=selected_model_meta["policy_path"],
     )
 
+    st.info(
+        "**📊 Race Replay** — replay any 2024 race and see what Pitwall AI would have recommended "
+        "lap-by-lap.  |  **🔴 Live Race** — real-time recommendations via the OpenF1 API during "
+        "a race weekend.  Click a tab below to switch.",
+        icon="ℹ️",
+    )
     tab_replay, tab_live = st.tabs(["📊 Race Replay", "🔴 Live Race"])
 
     # ═════════════════════════════════════════════════════════════════════════
@@ -683,22 +689,12 @@ def main() -> None:
                 lbl = f"#{drv}  {abbr}" + (f"  · {team}" if team else "")
                 driver_options[lbl] = drv  # type: ignore[assignment]
 
-            # Driver picker + run button inline in the tab (not sidebar) so
-            # the user sees the output appear directly below the controls.
-            drv_col, btn_col = st.columns([4, 1])
-            with drv_col:
-                selected_driver_label = st.selectbox("Driver", list(driver_options.keys()))
-                selected_driver = driver_options[selected_driver_label]
-            with btn_col:
-                st.write("")  # vertical alignment nudge
-                run_btn = st.button("▶  Run", type="primary", use_container_width=True)
+            selected_driver_label = st.selectbox("Driver", list(driver_options.keys()))
+            selected_driver = driver_options[selected_driver_label]
 
-            # ── Run replay ────────────────────────────────────────────────────
+            # Auto-run whenever race or driver changes.
             cache_key = f"{selected_model_key}_{selected_round}_{selected_driver}"
-            replay_stale = (
-                "replay_key" not in st.session_state or st.session_state.replay_key != cache_key
-            )
-            if run_btn or replay_stale:
+            if st.session_state.get("replay_key") != cache_key:
                 with st.spinner("Simulating race…"):
                     st.session_state.replay = _run_replay(
                         race_df, selected_driver, tire_model, sc_model, policy
@@ -707,7 +703,7 @@ def main() -> None:
 
             replay: pd.DataFrame = st.session_state.get("replay", pd.DataFrame())
             if replay.empty:
-                st.info("Select a race and driver, then click ▶ Run Replay.")
+                st.info("Simulation loading…")
             else:
                 total_laps = int(race_df["lap_number"].max())
                 event_name = ROUND_NAMES.get(selected_round, f"Round {selected_round}")
