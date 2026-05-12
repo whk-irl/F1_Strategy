@@ -104,7 +104,8 @@ def _load_manifest() -> dict[str, Any]:
     so the app still works on a fresh checkout before any manifest is written.
     """
     if _MANIFEST_PATH.exists():
-        return json.loads(_MANIFEST_PATH.read_text())
+        manifest: dict[str, Any] = json.loads(_MANIFEST_PATH.read_text())
+        return manifest
     return {
         "default": "default",
         "models": {

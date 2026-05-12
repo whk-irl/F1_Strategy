@@ -11,7 +11,7 @@ Docs: https://openf1.org/
 from __future__ import annotations
 
 import time
-from typing import Any
+from typing import Any, cast
 
 import requests
 
@@ -28,7 +28,7 @@ class OpenF1Client:
 
     def __init__(self, ttl: int = 25) -> None:
         self._ttl = ttl
-        self._cache: dict[str, tuple[float, Any]] = {}
+        self._cache: dict[str, tuple[float, list[dict[str, Any]]]] = {}
         self._session = requests.Session()
 
     # ------------------------------------------------------------------
@@ -41,13 +41,13 @@ class OpenF1Client:
         if key in self._cache:
             ts, data = self._cache[key]
             if now - ts < self._ttl:
-                return data  # type: ignore[return-value]
+                return data
         url = f"{_BASE}/{endpoint}"
         resp = self._session.get(url, params=params, timeout=_SESSION_TIMEOUT)
         resp.raise_for_status()
-        data = resp.json()
+        data = cast(list[dict[str, Any]], resp.json())
         self._cache[key] = (now, data)
-        return data  # type: ignore[return-value]
+        return data
 
     # ------------------------------------------------------------------
     # Session discovery
