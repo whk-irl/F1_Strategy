@@ -91,15 +91,18 @@ ACTION_COLOR: dict[int, str] = {
 
 @st.cache_resource(show_spinner="Loading models…")
 def _load_models() -> tuple[Any, Any, Any]:
+    # Default to models_baked/ so the app works on Streamlit Cloud without MLflow.
+    # Override via env vars when running locally against a live MLflow registry.
     tracking_uri = os.getenv("PITWALL_MLFLOW_TRACKING_URI", "mlruns")
     mlflow.set_tracking_uri(tracking_uri)
     tire = mlflow.pyfunc.load_model(
-        os.getenv("PITWALL_TIRE_MODEL_URI", "models:/pitwall-tire-degradation/latest")
+        os.getenv("PITWALL_TIRE_MODEL_URI", "models_baked/tire")
     )
     sc = mlflow.pyfunc.load_model(
-        os.getenv("PITWALL_SC_MODEL_URI", "models:/pitwall-safety-car/latest")
+        os.getenv("PITWALL_SC_MODEL_URI", "models_baked/sc")
     )
-    policy = load_policy()
+    policy_path = os.getenv("PITWALL_POLICY_PATH", "models_baked/policy/model/policy")
+    policy = PPO.load(policy_path, device="cpu")
     return tire, sc, policy
 
 
