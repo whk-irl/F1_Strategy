@@ -634,14 +634,6 @@ def main() -> None:
             for tag_k, tag_v in tags.items():
                 st.caption(f"**{tag_k}:** {tag_v}")
 
-        st.divider()
-
-        season = 2024
-        round_options = {f"Round {r} — {n}": r for r, n in ROUND_NAMES.items()}
-        # Spain (index 9) is default — highest tyre wear, most interesting strategy
-        selected_label = st.selectbox("Race", list(round_options.keys()), index=9)
-        selected_round = round_options[selected_label]
-
     # ── Load the selected model set (cached per unique paths) ────────────────
     tire_model, sc_model, policy = _load_models(
         model_key=selected_model_key,
@@ -656,6 +648,15 @@ def main() -> None:
     # TAB 1 — Race Replay
     # ═════════════════════════════════════════════════════════════════════════
     with tab_replay:
+        season = 2024
+        round_options = {f"Round {r} — {n}": r for r, n in ROUND_NAMES.items()}
+        rnd_col, _ = st.columns([3, 1])
+        with rnd_col:
+            selected_label = st.selectbox(
+                "Race", list(round_options.keys()), index=9, key="replay_round"
+            )
+        selected_round = round_options[selected_label]
+
         gold = _load_gold()
         race_df = gold[(gold["session"] == "R") & (gold["round_number"] == selected_round)].copy()
 
@@ -682,10 +683,15 @@ def main() -> None:
                 lbl = f"#{drv}  {abbr}" + (f"  · {team}" if team else "")
                 driver_options[lbl] = drv  # type: ignore[assignment]
 
-            with st.sidebar:
+            # Driver picker + run button inline in the tab (not sidebar) so
+            # the user sees the output appear directly below the controls.
+            drv_col, btn_col = st.columns([4, 1])
+            with drv_col:
                 selected_driver_label = st.selectbox("Driver", list(driver_options.keys()))
                 selected_driver = driver_options[selected_driver_label]
-                run_btn = st.button("▶  Run Replay", type="primary", use_container_width=True)
+            with btn_col:
+                st.write("")  # vertical alignment nudge
+                run_btn = st.button("▶  Run", type="primary", use_container_width=True)
 
             # ── Run replay ────────────────────────────────────────────────────
             cache_key = f"{selected_model_key}_{selected_round}_{selected_driver}"
