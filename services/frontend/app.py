@@ -171,52 +171,60 @@ def _run_replay(
     sc_model: Any,
     policy: PPO,
 ) -> pd.DataFrame:
-    """Replay the race using actual 2024 team decisions; show policy recommendations.
+    """Replay the race and produce two position trajectories.
 
-    The env follows what the team actually did (pit laps, compounds) so that
-    positions are realistic.  The policy observes each lap's state and gives
-    its recommendation as commentary — this is what Pitwall AI would have said
-    had it been in the pit wall that day.
+    Pass 1 follows what the team actually did so the AI can provide
+    lap-by-lap commentary against a realistic race state.
+
+    Pass 2 follows the AI's own recommendations from lap 1 to produce an
+    honest counterfactual: "where would the driver have finished if Pitwall AI
+    had full control of the strategy?"
     """
+
+    def _apply_overrides(
+        action: int,
+        label: str,
+        wet_frac: float,
+        compound: int,
+        tyre_life: int,
+        cliff_lap: int,
+        laps_left: int,
+    ) -> tuple[int, str]:
+        """Apply wet-weather and tyre-cliff overrides to a raw policy action."""
+        on_wet = compound in (3, 4)
+        if not on_wet:
+            if wet_frac >= 0.8:
+                return 5, "Pit — WET"
+            if wet_frac >= 0.5:
+                return 4, "Pit — INTER"
+        elif on_wet and wet_frac < 0.2:
+            return 2, "Pit — MEDIUM"
+        if action == 0 and tyre_life >= cliff_lap + 3 and laps_left > 5:
+            best = {0: 1, 1: 2, 2: 3}.get(compound, 2)
+            return best, f"Pit — {['SOFT', 'MEDIUM', 'HARD'][best - 1]} ⚠"
+        return action, label
+
+    # ── Pass 1: team decisions → AI commentary ───────────────────────────────
     env = F1RaceEnv(race_df, driver_num, tire_model, sc_model)
     obs, _ = env.reset()
-
     agent_gold = race_df[race_df["driver_number"] == driver_num].sort_values("lap_number")
-
     rows: list[dict[str, Any]] = []
     terminated = False
 
     while not terminated:
         current_lap = env._lap
-
-        # Policy recommendation for this state (commentary only — not executed)
-        action, label = recommend_action(obs, policy)
+        raw_action, raw_label = recommend_action(obs, policy)
         probs = action_probabilities(obs, policy)
 
-        # --- Rule-based overrides on top of the policy ---
-
-        # 1. Wet-weather override: policy only knows dry compounds (SOFT/MEDIUM/HARD).
-        #    Switch to INTER when >50% of field is on wet compounds; WET when >80%.
         wet_frac = (
             float(env._wet_fraction_arr[current_lap]) if current_lap <= env._total_laps else 0.0
         )
-        on_wet = env._compound in (3, 4)
-        if not on_wet:
-            if wet_frac >= 0.8:
-                action, label = 5, "Pit — WET"
-            elif wet_frac >= 0.5:
-                action, label = 4, "Pit — INTER"
-        elif on_wet and wet_frac < 0.2:
-            action, label = 2, "Pit — MEDIUM"  # conditions dried, switch back
-
-        # 2. Cliff override: nudge policy to pit when past the compound's optimal window.
         cliff = env._cliff_lap.get(env._compound, 35)
         laps_left = env._total_laps - current_lap
-        if action == 0 and env._tyre_life >= cliff + 3 and laps_left > 5:
-            best = {0: 1, 1: 2, 2: 3}.get(env._compound, 2)  # SOFT→MEDIUM, else HARD
-            action, label = best, f"Pit — {['SOFT', 'MEDIUM', 'HARD'][best - 1]} ⚠"
+        action, label = _apply_overrides(
+            raw_action, raw_label, wet_frac, env._compound, env._tyre_life, cliff, laps_left
+        )
 
-        # Actual team decision drives the simulation
         gold_row = agent_gold[agent_gold["lap_number"] == current_lap]
         actual_pit = bool(gold_row["pit_in_this_lap"].iloc[0]) if not gold_row.empty else False
         actual_compound = (
@@ -229,20 +237,13 @@ def _run_replay(
             if not gold_row.empty and pd.notna(gold_row["position"].iloc[0])
             else None
         )
-
-        # Translate actual pit decision to action integer for env.step()
-        if actual_pit:
-            compound_to_action = {0: 1, 1: 2, 2: 3}
-            team_action = compound_to_action.get(actual_compound, 1)
-        else:
-            team_action = 0
+        team_action = {0: 1, 1: 2, 2: 3}.get(actual_compound, 1) if actual_pit else 0
 
         obs, reward, terminated, _, info = env.step(team_action)
 
         rows.append(
             {
                 "lap": info["lap"],
-                "position": actual_position if actual_position is not None else info["position"],
                 "actual_position": actual_position,
                 "compound": info["compound"],
                 "tyre_life": info["tyre_life"],
@@ -255,7 +256,7 @@ def _run_replay(
                 "track_status": env._last_track_status,
                 "recommended_action": action,
                 "recommended_label": label,
-                "pitted_this_lap": actual_pit,  # what team actually did
+                "pitted_this_lap": actual_pit,
                 "prob_stay": probs["Stay out"],
                 "prob_soft": probs["Pit — SOFT"],
                 "prob_medium": probs["Pit — MEDIUM"],
@@ -266,7 +267,34 @@ def _run_replay(
             }
         )
 
-    return pd.DataFrame(rows)
+    df = pd.DataFrame(rows)
+
+    # ── Pass 2: AI decisions → counterfactual positions ──────────────────────
+    env2 = F1RaceEnv(race_df, driver_num, tire_model, sc_model)
+    obs2, _ = env2.reset()
+    terminated2 = False
+    ai_pos_map: dict[int, int] = {}
+
+    while not terminated2:
+        current_lap2 = env2._lap
+        raw_action2, raw_label2 = recommend_action(obs2, policy)
+        wet_frac2 = (
+            float(env2._wet_fraction_arr[current_lap2]) if current_lap2 <= env2._total_laps else 0.0
+        )
+        cliff2 = env2._cliff_lap.get(env2._compound, 35)
+        laps_left2 = env2._total_laps - current_lap2
+        ai_action, _ = _apply_overrides(
+            raw_action2, raw_label2, wet_frac2, env2._compound, env2._tyre_life, cliff2, laps_left2
+        )
+        # Actions 4/5 (INTER/WET override) are display-only; clamp to valid env range.
+        ai_action = min(ai_action, 3)
+
+        obs2, _, terminated2, _, info2 = env2.step(ai_action)
+        ai_pos_map[info2["lap"]] = int(info2["position"])
+
+    df["ai_position"] = df["lap"].map(ai_pos_map)
+
+    return df
 
 
 # ---------------------------------------------------------------------------
@@ -275,7 +303,7 @@ def _run_replay(
 
 
 def _position_chart(replay: pd.DataFrame, total_laps: int) -> go.Figure:
-    """Dual-line position chart: Pitwall AI strategy vs actual team strategy."""
+    """Dual-line position chart: Pitwall AI counterfactual vs actual 2024 team result."""
     fig = go.Figure()
 
     # SC/VSC shading
@@ -289,19 +317,20 @@ def _position_chart(replay: pd.DataFrame, total_laps: int) -> go.Figure:
             line_width=0,
         )
 
-    # Simulated position (following actual team decisions)
+    # AI counterfactual: where the driver would be following Pitwall AI's calls
+    ai = replay.dropna(subset=["ai_position"])
     fig.add_trace(
         go.Scatter(
-            x=replay["lap"],
-            y=replay["position"],
+            x=ai["lap"],
+            y=ai["ai_position"],
             mode="lines+markers",
-            name="Simulated position",
+            name="Pitwall AI strategy",
             line={"color": "#E8002D", "width": 2},
             marker={"size": 4},
         )
     )
 
-    # Actual position from gold data
+    # Actual position from gold data (what the team did)
     actual = replay.dropna(subset=["actual_position"])
     fig.add_trace(
         go.Scatter(
@@ -313,28 +342,28 @@ def _position_chart(replay: pd.DataFrame, total_laps: int) -> go.Figure:
         )
     )
 
-    # Pit stop markers
-    pits = replay[replay["pitted_this_lap"]]
+    # Pit stop markers on the actual position line
+    pits = replay[replay["pitted_this_lap"]].dropna(subset=["actual_position"])
     fig.add_trace(
         go.Scatter(
             x=pits["lap"],
-            y=pits["position"],
+            y=pits["actual_position"],
             mode="markers",
-            name="Pit stop",
-            marker={"symbol": "triangle-down", "size": 12, "color": "#E8002D"},
+            name="Team pit stop",
+            marker={"symbol": "triangle-down", "size": 12, "color": "#888888"},
             showlegend=True,
         )
     )
 
-    # Laps where AI disagreed with team
+    # Laps where AI disagreed with team — mark on actual position line
     disagreed = replay[
         ((replay["recommended_action"] > 0) & ~replay["actual_pit"])
         | ((replay["recommended_action"] == 0) & replay["actual_pit"])
-    ]
+    ].dropna(subset=["actual_position"])
     fig.add_trace(
         go.Scatter(
             x=disagreed["lap"],
-            y=disagreed["position"],
+            y=disagreed["actual_position"],
             mode="markers",
             name="AI disagreed",
             marker={"symbol": "x", "size": 10, "color": "#FFD700"},
@@ -676,14 +705,13 @@ def main() -> None:
             driver_options: dict[str, int | str] = {}
             for drv, grp in race_df.groupby("driver_number"):
                 abbr = (
-                    grp["driver_abbreviation"].iloc[0]
-                    if "driver_abbreviation" in grp.columns
-                    and pd.notna(grp["driver_abbreviation"].iloc[0])
+                    grp["driver_code"].iloc[0]
+                    if "driver_code" in grp.columns and pd.notna(grp["driver_code"].iloc[0])
                     else str(drv)
                 )
                 team = (
-                    grp["team_name"].iloc[0]
-                    if "team_name" in grp.columns and pd.notna(grp["team_name"].iloc[0])
+                    grp["team"].iloc[0]
+                    if "team" in grp.columns and pd.notna(grp["team"].iloc[0])
                     else ""
                 )
                 lbl = f"#{drv}  {abbr}" + (f"  · {team}" if team else "")
@@ -715,7 +743,7 @@ def main() -> None:
 
                 # Summary metrics
                 final = replay.iloc[-1]
-                ai_pos = int(final["position"])
+                ai_pos = int(final["ai_position"]) if pd.notna(final["ai_position"]) else "—"
                 actual_pos = (
                     int(final["actual_position"]) if pd.notna(final["actual_position"]) else "—"
                 )
@@ -756,7 +784,10 @@ def main() -> None:
                     )
                     c1, c2 = st.columns(2)
                     c1.metric("Tyre age", f"{int(row['tyre_life'])} laps")
-                    c2.metric("Position", f"P{int(row['position'])}")
+                    actual_pos_lap = (
+                        int(row["actual_position"]) if pd.notna(row["actual_position"]) else "?"
+                    )
+                    c2.metric("Position (actual)", f"P{actual_pos_lap}")
 
                     gap_ahead = row["gap_ahead_s"]
                     gap_behind = row["gap_behind_s"]
@@ -813,7 +844,7 @@ def main() -> None:
                     display = replay[
                         [
                             "lap",
-                            "position",
+                            "ai_position",
                             "actual_position",
                             "compound",
                             "tyre_life",
