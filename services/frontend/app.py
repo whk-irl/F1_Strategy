@@ -125,8 +125,7 @@ def _run_replay(
     its recommendation as commentary — this is what Pitwall AI would have said
     had it been in the pit wall that day.
     """
-    # replay_mode=True: use actual recorded lap times so positions track real race.
-    env = F1RaceEnv(race_df, driver_num, tire_model, sc_model, replay_mode=True)
+    env = F1RaceEnv(race_df, driver_num, tire_model, sc_model)
     obs, _ = env.reset()
 
     agent_gold = race_df[race_df["driver_number"] == driver_num].sort_values("lap_number")
@@ -190,7 +189,7 @@ def _run_replay(
         rows.append(
             {
                 "lap": info["lap"],
-                "position": info["position"],
+                "position": actual_position if actual_position is not None else info["position"],
                 "actual_position": actual_position,
                 "compound": info["compound"],
                 "tyre_life": info["tyre_life"],
