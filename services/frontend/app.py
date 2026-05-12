@@ -292,6 +292,13 @@ def _run_replay(
         obs2, _, terminated2, _, info2 = env2.step(ai_action)
         ai_pos_map[info2["lap"]] = int(info2["position"])
 
+    # Both the AI and team start from the same grid position.  Lap 1 position
+    # from the sim can be off because the synthetic lap time doesn't exactly
+    # match the real race lap 1 time.  Anchor to the gold-data starting position.
+    lap1_rows = df[df["lap"] == 1]["actual_position"]
+    if not lap1_rows.empty and pd.notna(lap1_rows.iloc[0]):
+        ai_pos_map[1] = int(lap1_rows.iloc[0])
+
     df["ai_position"] = df["lap"].map(ai_pos_map)
 
     return df
