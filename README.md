@@ -2,9 +2,9 @@
 
 > An open-source F1 race strategy engine — pit timing, tire compound selection, and safety-car response — powered by reinforcement learning and a cloud-native MLOps stack.
 
-[![CI](https://github.com/whk-irl/F1_Strategy/actions/workflows/ci.yml/badge.svg)](https://github.com/whk-irl/F1_Strategy/actions) [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-**[Live demo →](https://f1strategy-forza.streamlit.app/)**
+**[🏎️ Live demo →](https://f1strategy-forza.streamlit.app/)**
 
 ---
 
