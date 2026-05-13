@@ -20,12 +20,12 @@ from __future__ import annotations
 from typing import Any, NamedTuple
 
 import numpy as np
+import numpy.typing as npt
 import torch as th
 from gymnasium import spaces
 from stable_baselines3.common.buffers import ReplayBuffer
 from stable_baselines3.common.type_aliases import ReplayBufferSamples
 from stable_baselines3.common.vec_env import VecNormalize
-
 
 # ---------------------------------------------------------------------------
 # Namedtuple returned by PrioritizedReplayBuffer.sample()
@@ -40,8 +40,8 @@ class PrioritizedReplayBufferSamples(NamedTuple):
     next_observations: th.Tensor
     dones: th.Tensor
     rewards: th.Tensor
-    weights: th.Tensor   # importance-sampling correction weights
-    indices: np.ndarray  # buffer positions — required for update_priorities()
+    weights: th.Tensor              # importance-sampling correction weights
+    indices: npt.NDArray[Any]       # buffer positions — required for update_priorities()
 
 
 # ---------------------------------------------------------------------------
@@ -122,8 +122,8 @@ class PrioritizedReplayBuffer(ReplayBuffer):
     def __init__(
         self,
         buffer_size: int,
-        observation_space: spaces.Space,
-        action_space: spaces.Space,
+        observation_space: spaces.Space[Any],
+        action_space: spaces.Space[Any],
         device: th.device | str = "auto",
         n_envs: int = 1,
         optimize_memory_usage: bool = False,
@@ -156,11 +156,11 @@ class PrioritizedReplayBuffer(ReplayBuffer):
 
     def add(
         self,
-        obs: np.ndarray,
-        next_obs: np.ndarray,
-        action: np.ndarray,
-        reward: np.ndarray,
-        done: np.ndarray,
+        obs: npt.NDArray[Any],
+        next_obs: npt.NDArray[Any],
+        action: npt.NDArray[Any],
+        reward: npt.NDArray[Any],
+        done: npt.NDArray[Any],
         infos: list[dict[str, Any]],
     ) -> None:
         """Store transition and assign maximum priority so it is sampled soon."""
@@ -168,11 +168,11 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         super().add(obs, next_obs, action, reward, done, infos)
         self._sum_tree.update(idx, self._max_priority**self._alpha)
 
-    def sample(
+    def sample(  # type: ignore[override]
         self,
         batch_size: int,
         env: VecNormalize | None = None,
-    ) -> PrioritizedReplayBufferSamples:  # type: ignore[override]
+    ) -> PrioritizedReplayBufferSamples:
         """Sample a batch proportional to priorities.
 
         Returns :class:`PrioritizedReplayBufferSamples` instead of the
@@ -234,7 +234,7 @@ class PrioritizedReplayBuffer(ReplayBuffer):
     # Priority update (called by DQNPER after each gradient step)
     # ------------------------------------------------------------------
 
-    def update_priorities(self, indices: np.ndarray, td_errors: np.ndarray) -> None:
+    def update_priorities(self, indices: npt.NDArray[Any], td_errors: npt.NDArray[Any]) -> None:
         """Update priorities from fresh TD errors.
 
         Args:
@@ -242,7 +242,7 @@ class PrioritizedReplayBuffer(ReplayBuffer):
             td_errors: Absolute TD errors (no gradient) for those positions,
                 shape ``(batch_size,)``.
         """
-        for idx, err in zip(indices, td_errors):
+        for idx, err in zip(indices, td_errors, strict=True):
             priority = float(np.abs(err)) + self._epsilon
             self._sum_tree.update(int(idx), priority**self._alpha)
             if priority > self._max_priority:

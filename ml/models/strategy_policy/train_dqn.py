@@ -35,9 +35,10 @@ import gymnasium as gym
 import mlflow
 import mlflow.pyfunc
 import numpy as np
+import numpy.typing as npt
 import pandas as pd
 import torch as th
-import torch.nn.functional as F
+import torch.nn.functional as F  # noqa: N812
 import typer
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -121,7 +122,7 @@ class StrategyDQNConfig(BaseSettings):
 # ---------------------------------------------------------------------------
 
 
-class MultiRaceEnv(gym.Env[np.ndarray, np.ndarray]):
+class MultiRaceEnv(gym.Env[npt.NDArray[Any], npt.NDArray[Any]]):
     """F1RaceEnv wrapper that samples a random (race, driver) pair on each reset."""
 
     metadata: ClassVar[dict[str, Any]] = {"render_modes": []}  # type: ignore[misc]
@@ -148,7 +149,7 @@ class MultiRaceEnv(gym.Env[np.ndarray, np.ndarray]):
         *,
         seed: int | None = None,
         options: dict[str, Any] | None = None,
-    ) -> tuple[np.ndarray, dict[str, Any]]:
+    ) -> tuple[npt.NDArray[Any], dict[str, Any]]:
         super().reset(seed=seed)
         idx = int(self.np_random.integers(0, len(self._pool)))
         race_df, driver = self._pool[idx]
@@ -157,7 +158,7 @@ class MultiRaceEnv(gym.Env[np.ndarray, np.ndarray]):
             options={"race_df": race_df, "driver_number": driver},
         )
 
-    def step(self, action: int) -> tuple[np.ndarray, float, bool, bool, dict[str, Any]]:  # type: ignore[override]
+    def step(self, action: int) -> tuple[npt.NDArray[Any], float, bool, bool, dict[str, Any]]:  # type: ignore[override]
         return self._inner.step(action)
 
 
@@ -261,7 +262,7 @@ class DQNPER(DQN):
             losses.append(float(loss.item()))
 
             self.policy.optimizer.zero_grad()
-            loss.backward()
+            loss.backward()  # type: ignore[no-untyped-call]
             th.nn.utils.clip_grad_norm_(self.policy.parameters(), self.max_grad_norm)
             self.policy.optimizer.step()
 

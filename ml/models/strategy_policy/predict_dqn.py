@@ -12,10 +12,12 @@ from __future__ import annotations
 
 import os
 import tempfile
+from typing import Any
 
 import mlflow
 import mlflow.tracking
 import numpy as np
+import numpy.typing as npt
 import torch as th
 from dotenv import load_dotenv
 
@@ -100,7 +102,7 @@ def load_policy(run_id: str | None = None) -> DQNPER:
 
 
 def recommend_action(
-    obs: np.ndarray,
+    obs: npt.NDArray[Any],
     model: DQNPER,
 ) -> tuple[int, str]:
     """Get the greedy pit-stop recommendation for the current race state.
@@ -131,7 +133,7 @@ def recommend_action(
     return action_int, ACTION_NAMES[action_int]
 
 
-def q_values(obs: np.ndarray, model: DQNPER) -> dict[str, float]:
+def q_values(obs: npt.NDArray[Any], model: DQNPER) -> dict[str, float]:
     """Return raw Q-values for all four actions.
 
     Q-values represent the expected cumulative reward from each action in the
@@ -152,7 +154,7 @@ def q_values(obs: np.ndarray, model: DQNPER) -> dict[str, float]:
     return {ACTION_NAMES[i]: float(q[i].item()) for i in range(len(ACTION_NAMES))}
 
 
-def action_probabilities(obs: np.ndarray, model: DQNPER) -> dict[str, float]:
+def action_probabilities(obs: npt.NDArray[Any], model: DQNPER) -> dict[str, float]:
     """Return softmax-normalised Q-values as pseudo-probabilities.
 
     Softmax over Q-values is not a calibrated probability but gives an

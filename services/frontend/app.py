@@ -24,9 +24,9 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from ml.models._loader import load_gold_seasons
 import ml.models.strategy_policy.predict as _ppo_predict
 import ml.models.strategy_policy.predict_dqn as _dqn_predict
+from ml.models._loader import load_gold_seasons
 from ml.models.strategy_policy.per_buffer import PrioritizedReplayBuffer
 from ml.models.strategy_policy.train_dqn import DQNPER
 from stable_baselines3 import PPO
@@ -146,18 +146,23 @@ def _load_models(
     mlflow.set_tracking_uri(tracking_uri)
     tire = mlflow.pyfunc.load_model(tire_uri)
     sc = mlflow.pyfunc.load_model(sc_uri)
+    loaded_policy: Any
     if model_type == "dqn":
-        policy = DQNPER.load(
+        loaded_policy = DQNPER.load(
             policy_path,
             device="cpu",
             custom_objects={"replay_buffer_class": PrioritizedReplayBuffer},
         )
     else:
-        policy = PPO.load(policy_path, device="cpu")
-    return tire, sc, policy
+        loaded_policy = PPO.load(policy_path, device="cpu")
+    return tire, sc, loaded_policy
 
 
-def _recommend(obs: Any, policy: Any, model_type: str) -> tuple[int, str, dict[str, float], dict[str, float] | None]:
+def _recommend(
+    obs: Any,
+    policy: Any,
+    model_type: str,
+) -> tuple[int, str, dict[str, float], dict[str, float] | None]:
     """Dispatch recommend_action / probabilities to the right predict module.
 
     Returns:
@@ -757,7 +762,7 @@ def main() -> None:
                     else ""
                 )
                 lbl = f"#{drv}  {abbr}" + (f"  · {team}" if team else "")
-                driver_options[lbl] = drv  # type: ignore[assignment]
+                driver_options[lbl] = drv
 
             selected_driver_label = st.selectbox("Driver", list(driver_options.keys()))
             selected_driver = driver_options[selected_driver_label]
