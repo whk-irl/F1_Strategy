@@ -11,6 +11,7 @@ Pitwall AI recommends optimal in-race strategy decisions for a Formula 1 team:
 - **When to pit** the car
 - **Which tire compound** to fit (soft / medium / hard)
 - **How to react** to safety cars and virtual safety cars
+- Demo link: https://f1strategy-forza.streamlit.app/
 
 It does this by combining a learned race simulator with a reinforcement-learning policy, trained on historical F1 data from 2018 onward via [FastF1](https://docs.fastf1.dev/).
 
