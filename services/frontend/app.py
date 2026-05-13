@@ -93,18 +93,36 @@ ACTION_COLOR: dict[int, str] = {
 # Model manifest
 # ---------------------------------------------------------------------------
 
-_MANIFEST_PATH = Path(__file__).parent.parent.parent / "models_baked" / "manifest.json"
+
+def _locate_manifest() -> Path:
+    """Return the manifest path, trying multiple candidates in priority order.
+
+    Priority:
+    1. ``PITWALL_MANIFEST_PATH`` env var / Streamlit secret (explicit override)
+    2. Repo-root-relative via ``__file__`` (works when CWD ≠ repo root)
+    3. CWD-relative fallback (original behaviour, works when CWD = repo root)
+    """
+    env_override = os.getenv("PITWALL_MANIFEST_PATH")
+    candidates: list[Path] = []
+    if env_override:
+        candidates.append(Path(env_override))
+    candidates.append(Path(__file__).parent.parent.parent / "models_baked" / "manifest.json")
+    candidates.append(Path("models_baked") / "manifest.json")
+    for p in candidates:
+        if p.exists():
+            return p
+    return candidates[1]  # return __file__-relative even if absent (error surfaces clearly)
 
 
-@st.cache_data(show_spinner=False)
 def _load_manifest() -> dict[str, Any]:
     """Load the model catalog from models_baked/manifest.json.
 
     Falls back to a single hard-coded default entry when the file is absent,
     so the app still works on a fresh checkout before any manifest is written.
     """
-    if _MANIFEST_PATH.exists():
-        manifest: dict[str, Any] = json.loads(_MANIFEST_PATH.read_text())
+    manifest_path = _locate_manifest()
+    if manifest_path.exists():
+        manifest: dict[str, Any] = json.loads(manifest_path.read_text())
         return manifest
     return {
         "default": "default",
