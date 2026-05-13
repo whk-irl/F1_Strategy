@@ -31,7 +31,13 @@ def load_gold_seasons(seasons: list[int]) -> pd.DataFrame:
     backend = os.getenv("PITWALL_STORAGE_BACKEND", "s3")
 
     if backend == "local":
-        local_path = os.getenv("PITWALL_LOCAL_DATA_PATH", "data/gold_2024.parquet")
+        # Prefer the multi-season baked file; fall back to the 2024-only legacy file.
+        default_path = (
+            "data/gold_2022_2025.parquet"
+            if os.path.exists("data/gold_2022_2025.parquet")
+            else "data/gold_2024.parquet"
+        )
+        local_path = os.getenv("PITWALL_LOCAL_DATA_PATH", default_path)
         if not os.path.exists(local_path):
             raise RuntimeError(
                 f"Local data file not found: {local_path}. Run scripts/export_for_deploy.py first."

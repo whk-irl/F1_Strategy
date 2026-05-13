@@ -39,31 +39,107 @@ from services.simulator.env import F1RaceEnv
 # Constants
 # ---------------------------------------------------------------------------
 
-ROUND_NAMES: dict[int, str] = {
-    1: "Bahrain GP",
-    2: "Saudi Arabian GP",
-    3: "Australian GP",
-    4: "Japanese GP",
-    5: "Chinese GP",
-    6: "Miami GP",
-    7: "Emilia Romagna GP",
-    8: "Monaco GP",
-    9: "Canadian GP",
-    10: "Spanish GP",
-    11: "Austrian GP",
-    12: "British GP",
-    13: "Hungarian GP",
-    14: "Belgian GP",
-    15: "Dutch GP",
-    16: "Italian GP",
-    17: "Azerbaijan GP",
-    18: "Singapore GP",
-    19: "United States GP",
-    20: "Mexico City GP",
-    21: "São Paulo GP",
-    22: "Las Vegas GP",
-    23: "Qatar GP",
-    24: "Abu Dhabi GP",
+ROUND_NAMES_BY_YEAR: dict[int, dict[int, str]] = {
+    2022: {
+        1: "Bahrain GP",
+        2: "Saudi Arabian GP",
+        3: "Australian GP",
+        4: "Emilia Romagna GP",
+        5: "Miami GP",
+        6: "Spanish GP",
+        7: "Monaco GP",
+        8: "Azerbaijan GP",
+        9: "Canadian GP",
+        10: "British GP",
+        11: "Austrian GP",
+        12: "French GP",
+        13: "Hungarian GP",
+        14: "Belgian GP",
+        15: "Dutch GP",
+        16: "Italian GP",
+        17: "Singapore GP",
+        18: "Japanese GP",
+        19: "United States GP",
+        20: "Mexico City GP",
+        21: "São Paulo GP",
+        22: "Abu Dhabi GP",
+    },
+    2023: {
+        1: "Bahrain GP",
+        2: "Saudi Arabian GP",
+        3: "Australian GP",
+        4: "Azerbaijan GP",
+        5: "Miami GP",
+        6: "Monaco GP",
+        7: "Spanish GP",
+        8: "Canadian GP",
+        9: "Austrian GP",
+        10: "British GP",
+        11: "Hungarian GP",
+        12: "Belgian GP",
+        13: "Dutch GP",
+        14: "Italian GP",
+        15: "Singapore GP",
+        16: "Japanese GP",
+        17: "Qatar GP",
+        18: "United States GP",
+        19: "Mexico City GP",
+        20: "São Paulo GP",
+        21: "Las Vegas GP",
+        22: "Abu Dhabi GP",
+    },
+    2024: {
+        1: "Bahrain GP",
+        2: "Saudi Arabian GP",
+        3: "Australian GP",
+        4: "Japanese GP",
+        5: "Chinese GP",
+        6: "Miami GP",
+        7: "Emilia Romagna GP",
+        8: "Monaco GP",
+        9: "Canadian GP",
+        10: "Spanish GP",
+        11: "Austrian GP",
+        12: "British GP",
+        13: "Hungarian GP",
+        14: "Belgian GP",
+        15: "Dutch GP",
+        16: "Italian GP",
+        17: "Azerbaijan GP",
+        18: "Singapore GP",
+        19: "United States GP",
+        20: "Mexico City GP",
+        21: "São Paulo GP",
+        22: "Las Vegas GP",
+        23: "Qatar GP",
+        24: "Abu Dhabi GP",
+    },
+    2025: {
+        1: "Australian GP",
+        2: "Chinese GP",
+        3: "Japanese GP",
+        4: "Bahrain GP",
+        5: "Saudi Arabian GP",
+        6: "Miami GP",
+        7: "Emilia Romagna GP",
+        8: "Monaco GP",
+        9: "Spanish GP",
+        10: "Canadian GP",
+        11: "Austrian GP",
+        12: "British GP",
+        13: "Belgian GP",
+        14: "Hungarian GP",
+        15: "Dutch GP",
+        16: "Italian GP",
+        17: "Azerbaijan GP",
+        18: "Singapore GP",
+        19: "United States GP",
+        20: "Mexico City GP",
+        21: "São Paulo GP",
+        22: "Las Vegas GP",
+        23: "Qatar GP",
+        24: "Abu Dhabi GP",
+    },
 }
 
 COMPOUND_LABEL: dict[int, str] = {
@@ -197,9 +273,9 @@ def _recommend(
     return action, label, probs, qv
 
 
-@st.cache_data(show_spinner="Loading 2024 gold data…")
+@st.cache_data(show_spinner="Loading race data…")
 def _load_gold() -> pd.DataFrame:
-    return load_gold_seasons([2024])
+    return load_gold_seasons([2022, 2023, 2024, 2025])
 
 
 @st.cache_resource(show_spinner=False)
@@ -740,9 +816,9 @@ def main() -> None:
     )
 
     st.info(
-        "**📊 Race Replay** — replay any 2024 race and see what Pitwall AI would have recommended "
-        "lap-by-lap.  |  **🔴 Live Race** — real-time recommendations via the OpenF1 API during "
-        "a race weekend.  Click a tab below to switch.",
+        "**📊 Race Replay** — replay any race from 2022–2025 and see what Pitwall AI would have "
+        "recommended lap-by-lap.  |  **🔴 Live Race** — real-time recommendations via the OpenF1 "
+        "API during a race weekend.  Click a tab below to switch.",
         icon="ℹ️",
     )
     tab_replay, tab_live = st.tabs(["📊 Race Replay", "🔴 Live Race"])
@@ -751,22 +827,38 @@ def main() -> None:
     # TAB 1 — Race Replay
     # ═════════════════════════════════════════════════════════════════════════
     with tab_replay:
-        season = 2024
-        round_options = {f"Round {r} — {n}": r for r, n in ROUND_NAMES.items()}
-        rnd_col, _ = st.columns([3, 1])
+        gold = _load_gold()
+
+        season_col, rnd_col = st.columns([1, 3])
+        with season_col:
+            available_seasons = sorted(gold["year"].unique().tolist(), reverse=True)
+            selected_season = st.selectbox(
+                "Season",
+                available_seasons,
+                index=available_seasons.index(2024) if 2024 in available_seasons else 0,
+                key="replay_season",
+            )
+
+        season_gold = gold[(gold["year"] == selected_season) & (gold["session"] == "R")]
+        year_names = ROUND_NAMES_BY_YEAR.get(selected_season, {})
+        available_rounds = sorted(int(r) for r in season_gold["round_number"].unique())
+        round_options = {
+            f"Rnd {r:02d} — {year_names.get(r, f'Round {r}')}": r for r in available_rounds
+        }
+
+        default_rnd_idx = min(9, len(round_options) - 1)
         with rnd_col:
             selected_label = st.selectbox(
-                "Race", list(round_options.keys()), index=9, key="replay_round"
+                "Race", list(round_options.keys()), index=default_rnd_idx, key="replay_round"
             )
         selected_round = round_options[selected_label]
 
-        gold = _load_gold()
-        race_df = gold[(gold["session"] == "R") & (gold["round_number"] == selected_round)].copy()
+        race_df = season_gold[season_gold["round_number"] == selected_round].copy()
 
         if race_df.empty:
             st.error(
-                f"No race data found for Round {selected_round}. "
-                "Run `make ingest-season SEASON=2024` first."
+                f"No race data found for {selected_season} Round {selected_round}. "
+                "Run `make ingest-season` first."
             )
         else:
             # Driver selector
@@ -788,8 +880,8 @@ def main() -> None:
             selected_driver_label = st.selectbox("Driver", list(driver_options.keys()))
             selected_driver = driver_options[selected_driver_label]
 
-            # Auto-run whenever race or driver changes.
-            cache_key = f"{selected_model_key}_{selected_round}_{selected_driver}"
+            # Auto-run whenever season, race or driver changes.
+            cache_key = f"{selected_model_key}_{selected_season}_{selected_round}_{selected_driver}"
             if st.session_state.get("replay_key") != cache_key:
                 with st.spinner("Simulating race…"):
                     st.session_state.replay = _run_replay(
@@ -802,12 +894,14 @@ def main() -> None:
                 st.info("Simulation loading…")
             else:
                 total_laps = int(race_df["lap_number"].max())
-                event_name = ROUND_NAMES.get(selected_round, f"Round {selected_round}")
+                event_name = year_names.get(selected_round, f"Round {selected_round}")
 
                 # ── Header ────────────────────────────────────────────────────
                 parts = selected_driver_label.split()
                 driver_abbr = parts[1] if len(parts) > 1 else str(selected_driver)
-                st.markdown(f"## {event_name}  ·  {season}  ·  #{selected_driver} {driver_abbr}")
+                st.markdown(
+                    f"## {event_name}  ·  {selected_season}  ·  #{selected_driver} {driver_abbr}"
+                )
 
                 # Summary metrics
                 final = replay.iloc[-1]

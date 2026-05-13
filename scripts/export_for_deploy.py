@@ -63,22 +63,26 @@ def main() -> None:
     )
     logger.info("  -> models_baked/policy/  (run %s)", run_id[:8])
 
-    # 2024 gold data
-    logger.info("Exporting gold data...")
+    # 2022-2025 gold data (baked single file for Streamlit Cloud / Docker)
+    logger.info("Exporting gold data for seasons 2022-2025...")
     from ml.models._loader import load_gold_seasons
 
     # Temporarily ensure we read from S3/MinIO, not local (avoid circular)
     orig = os.environ.pop("PITWALL_STORAGE_BACKEND", None)
     try:
-        df = load_gold_seasons([2024])
+        df = load_gold_seasons([2022, 2023, 2024, 2025])
     finally:
         if orig:
             os.environ["PITWALL_STORAGE_BACKEND"] = orig
 
-    out_path = data_out / "gold_2024.parquet"
-    df.to_parquet(out_path, index=False)
+    out_path = data_out / "gold_2022_2025.parquet"
+    df.to_parquet(out_path, index=False, compression="zstd")
     size_mb = out_path.stat().st_size / 1e6
-    logger.info("  -> data/gold_2024.parquet  (%d rows, %.1f MB)", len(df), size_mb)
+    logger.info(
+        "  -> data/gold_2022_2025.parquet  (%d rows, %.1f MB)",
+        len(df),
+        size_mb,
+    )
 
     logger.info("Export complete. Run `docker build -t pitwall-ai .` to rebuild the image.")
 
