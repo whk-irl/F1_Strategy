@@ -1,9 +1,26 @@
 {
-  "default": "ppo_v1_2022_2026",
+  "default": "dqn_v2_2022_2025",
   "models": {
+    "dqn_v2_2022_2025": {
+      "label": "DQN+PER v2 — 2022–2025 · 3 M steps",
+      "description": "Production policy. DQN with Prioritized Experience Replay trained on 4 seasons (2022–2025), 3 M timesteps. Exposes raw Q-values for each action — directly interpretable unlike a stochastic PPO policy.",
+      "model_type": "dqn",
+      "tire_uri": "models_baked/tire",
+      "sc_uri": "models_baked/sc",
+      "policy_path": "models_baked/dqn_policy/model/policy",
+      "tags": {
+        "training_seasons": "2022-2025",
+        "total_timesteps": 3000000,
+        "net_arch": "256x128",
+        "per_alpha": 0.6,
+        "per_beta": 0.4,
+        "gamma": 0.995
+      }
+    },
     "ppo_v1_2022_2026": {
       "label": "PPO v1 — 2022–2026 · 3 M steps",
-      "description": "Default policy. Trained on 5 seasons (2022–2026), 3 M timesteps, 256×128 MLP, pit-loss 25 s.",
+      "description": "Baseline policy. PPO trained on 5 seasons (2022–2026), 3 M timesteps, 256×128 MLP. Kept for side-by-side comparison with DQN+PER.",
+      "model_type": "ppo",
       "tire_uri": "models_baked/tire",
       "sc_uri": "models_baked/sc",
       "policy_path": "models_baked/policy/model/policy",

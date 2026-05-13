@@ -25,10 +25,10 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from ml.models._loader import load_gold_seasons
-from ml.models.strategy_policy.predict import (
-    action_probabilities,
-    recommend_action,
-)
+import ml.models.strategy_policy.predict as _ppo_predict
+import ml.models.strategy_policy.predict_dqn as _dqn_predict
+from ml.models.strategy_policy.per_buffer import PrioritizedReplayBuffer
+from ml.models.strategy_policy.train_dqn import DQNPER
 from stable_baselines3 import PPO
 
 from services.live.obs_builder import DriverLiveState, update_from_openf1
@@ -128,7 +128,7 @@ def _load_manifest() -> dict[str, Any]:
 
 @st.cache_resource(show_spinner="Loading models…")
 def _load_models(
-    model_key: str, tire_uri: str, sc_uri: str, policy_path: str
+    model_key: str, tire_uri: str, sc_uri: str, policy_path: str, model_type: str
 ) -> tuple[Any, Any, Any]:
     """Load a model set by key.  Cached separately per unique (key, paths) triple.
 
@@ -136,17 +136,42 @@ def _load_models(
         model_key: Logical name from the manifest (used only as a cache key).
         tire_uri: Path or MLflow URI for the tire-degradation pyfunc model.
         sc_uri: Path or MLflow URI for the safety-car pyfunc model.
-        policy_path: Path to the SB3 PPO checkpoint (without .zip extension).
+        policy_path: Path to the SB3 checkpoint (without .zip extension).
+        model_type: ``"ppo"`` or ``"dqn"``.
 
     Returns:
-        (tire_model, sc_model, ppo_policy) tuple.
+        (tire_model, sc_model, policy) tuple.
     """
     tracking_uri = os.getenv("PITWALL_MLFLOW_TRACKING_URI", "mlruns")
     mlflow.set_tracking_uri(tracking_uri)
     tire = mlflow.pyfunc.load_model(tire_uri)
     sc = mlflow.pyfunc.load_model(sc_uri)
-    policy = PPO.load(policy_path, device="cpu")
+    if model_type == "dqn":
+        policy = DQNPER.load(
+            policy_path,
+            device="cpu",
+            custom_objects={"replay_buffer_class": PrioritizedReplayBuffer},
+        )
+    else:
+        policy = PPO.load(policy_path, device="cpu")
     return tire, sc, policy
+
+
+def _recommend(obs: Any, policy: Any, model_type: str) -> tuple[int, str, dict[str, float], dict[str, float] | None]:
+    """Dispatch recommend_action / probabilities to the right predict module.
+
+    Returns:
+        (action_int, action_label, probs_dict, q_values_dict_or_None)
+    """
+    if model_type == "dqn":
+        action, label = _dqn_predict.recommend_action(obs, policy)
+        probs = _dqn_predict.action_probabilities(obs, policy)
+        qv: dict[str, float] | None = _dqn_predict.q_values(obs, policy)
+    else:
+        action, label = _ppo_predict.recommend_action(obs, policy)
+        probs = _ppo_predict.action_probabilities(obs, policy)
+        qv = None
+    return action, label, probs, qv
 
 
 @st.cache_data(show_spinner="Loading 2024 gold data…")
@@ -169,7 +194,8 @@ def _run_replay(
     driver_num: int | str,
     tire_model: Any,
     sc_model: Any,
-    policy: PPO,
+    policy: Any,
+    model_type: str = "ppo",
 ) -> pd.DataFrame:
     """Replay the race and produce two position trajectories.
 
@@ -213,8 +239,7 @@ def _run_replay(
 
     while not terminated:
         current_lap = env._lap
-        raw_action, raw_label = recommend_action(obs, policy)
-        probs = action_probabilities(obs, policy)
+        raw_action, raw_label, probs, qv = _recommend(obs, policy, model_type)
 
         wet_frac = (
             float(env._wet_fraction_arr[current_lap]) if current_lap <= env._total_laps else 0.0
@@ -261,6 +286,10 @@ def _run_replay(
                 "prob_soft": probs["Pit — SOFT"],
                 "prob_medium": probs["Pit — MEDIUM"],
                 "prob_hard": probs["Pit — HARD"],
+                "q_stay": qv["Stay out"] if qv else None,
+                "q_soft": qv["Pit — SOFT"] if qv else None,
+                "q_medium": qv["Pit — MEDIUM"] if qv else None,
+                "q_hard": qv["Pit — HARD"] if qv else None,
                 "actual_pit": actual_pit,
                 "actual_compound": actual_compound,
                 "reward": reward,
@@ -277,7 +306,7 @@ def _run_replay(
 
     while not terminated2:
         current_lap2 = env2._lap
-        raw_action2, raw_label2 = recommend_action(obs2, policy)
+        raw_action2, raw_label2, _probs2, _qv2 = _recommend(obs2, policy, model_type)
         wet_frac2 = (
             float(env2._wet_fraction_arr[current_lap2]) if current_lap2 <= env2._total_laps else 0.0
         )
@@ -431,7 +460,7 @@ _PIT_LOSS_BY_CIRCUIT: dict[str, float] = {
 }
 
 
-def _render_live_tab(policy: Any) -> None:
+def _render_live_tab(policy: Any, model_type: str = "ppo") -> None:
     """Render the Live Race tab — OpenF1 real-time strategy recommendations."""
     client = _openf1_client()
 
@@ -542,8 +571,7 @@ def _render_live_tab(policy: Any) -> None:
     obs = live_state.build_obs()
 
     # ── Policy recommendation ────────────────────────────────────────────────
-    action, label = recommend_action(obs, policy)
-    probs = action_probabilities(obs, policy)
+    action, label, probs, qv = _recommend(obs, policy, model_type)
 
     # Wet-weather override (mirrors replay engine rule)
     on_wet = live_state.compound_encoded in (3, 4)
@@ -588,6 +616,11 @@ def _render_live_tab(policy: Any) -> None:
         _prob_bar("Pit — SOFT", probs["Pit — SOFT"], "#FF3333")
         _prob_bar("Pit — MEDIUM", probs["Pit — MEDIUM"], "#FFD700")
         _prob_bar("Pit — HARD", probs["Pit — HARD"], "#DDDDDD")
+        if qv is not None:
+            st.caption("Q-values (expected cumulative reward per action)")
+            for act_label, q in qv.items():
+                marker = " ◀" if act_label == label else ""
+                st.caption(f"`{act_label}`: **{q:+.3f}**{marker}")
 
     with flags_col:
         st.markdown("#### Race flags")
@@ -671,11 +704,13 @@ def main() -> None:
                 st.caption(f"**{tag_k}:** {tag_v}")
 
     # ── Load the selected model set (cached per unique paths) ────────────────
+    model_type: str = selected_model_meta.get("model_type", "ppo")
     tire_model, sc_model, policy = _load_models(
         model_key=selected_model_key,
         tire_uri=selected_model_meta["tire_uri"],
         sc_uri=selected_model_meta["sc_uri"],
         policy_path=selected_model_meta["policy_path"],
+        model_type=model_type,
     )
 
     st.info(
@@ -732,7 +767,7 @@ def main() -> None:
             if st.session_state.get("replay_key") != cache_key:
                 with st.spinner("Simulating race…"):
                     st.session_state.replay = _run_replay(
-                        race_df, selected_driver, tire_model, sc_model, policy
+                        race_df, selected_driver, tire_model, sc_model, policy, model_type
                     )
                     st.session_state.replay_key = cache_key
 
@@ -828,6 +863,19 @@ def main() -> None:
                     _prob_bar("Pit — MEDIUM", row["prob_medium"], "#FFD700")
                     _prob_bar("Pit — HARD", row["prob_hard"], "#DDDDDD")
 
+                    if model_type == "dqn" and pd.notna(row.get("q_stay")):
+                        st.caption("Q-values (expected cumulative reward per action)")
+                        q_map = {
+                            "Stay out": row["q_stay"],
+                            "Pit — SOFT": row["q_soft"],
+                            "Pit — MEDIUM": row["q_medium"],
+                            "Pit — HARD": row["q_hard"],
+                        }
+                        best_q = max(q_map.values())
+                        for act_label, q in q_map.items():
+                            marker = " ◀" if q == best_q else ""
+                            st.caption(f"`{act_label}`: **{q:+.3f}**{marker}")
+
                     total_pit_prob = row["prob_soft"] + row["prob_medium"] + row["prob_hard"]
                     if action == 0 and total_pit_prob > 0.25:
                         st.warning(
@@ -891,7 +939,7 @@ def main() -> None:
     # TAB 2 — Live Race
     # ═════════════════════════════════════════════════════════════════════════
     with tab_live:
-        _render_live_tab(policy)
+        _render_live_tab(policy, model_type)
 
 
 if __name__ == "__main__":
