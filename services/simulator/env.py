@@ -613,10 +613,29 @@ class F1RaceEnv(gym.Env[np.ndarray, np.ndarray]):
         # Hard veto: pitting with ≤4 laps left almost never recovers the pit-loss time.
         late_pit_penalty = -20.0 if (is_pit and laps_remaining <= 4) else 0.0
 
+        # Penalise short stints: pitting before MIN_STINT_LAPS wastes a tyre
+        # allocation and is never rational in dry conditions.  Exempt SC/VSC
+        # free stops — early pitting under yellow is always correct.
+        _MIN_STINT_LAPS = 8
+        underutil_penalty = 0.0
+        if is_pit and track_status < 2:
+            unused = max(0, _MIN_STINT_LAPS - pre_pit_tyre_life)
+            underutil_penalty = -unused * 0.5  # up to −3.5 on lap 1
+
+        # Track-position bonus: reward each clean lap below the cliff so that
+        # staying out on healthy tyres competes with the immediate benefit of
+        # fresh rubber.  Fades to zero once past the cliff (cliff_penalty
+        # takes over) so both signals point in the same direction.
+        healthy_lap_bonus = 0.0
+        if not is_pit and over_cliff == 0:
+            healthy_lap_bonus = 0.3
+
         per_lap_reward = (
             -sim_lap / 100.0
             + cliff_penalty
             + late_pit_penalty
+            + underutil_penalty
+            + healthy_lap_bonus
             + max(0.0, float(position_change)) * 1.0
             - max(0.0, float(-position_change)) * 0.5
             + position_norm * 0.1
