@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+import pathlib
 
 import pandas as pd
 import s3fs
@@ -31,12 +32,13 @@ def load_gold_seasons(seasons: list[int]) -> pd.DataFrame:
     backend = os.getenv("PITWALL_STORAGE_BACKEND", "s3")
 
     if backend == "local":
-        # Prefer the multi-season baked file; fall back to the 2024-only legacy file.
-        default_path = (
-            "data/gold_2022_2025.parquet"
-            if os.path.exists("data/gold_2022_2025.parquet")
-            else "data/gold_2024.parquet"
-        )
+        # Anchor candidate paths relative to this file's repo root so that the
+        # correct file is found regardless of the process CWD (Streamlit Cloud
+        # may run with a different CWD than the repo root).
+        _repo_root = pathlib.Path(__file__).parent.parent.parent
+        _multi = _repo_root / "data" / "gold_2022_2025.parquet"
+        _legacy = _repo_root / "data" / "gold_2024.parquet"
+        default_path = str(_multi if _multi.exists() else _legacy)
         local_path = os.getenv("PITWALL_LOCAL_DATA_PATH", default_path)
         if not os.path.exists(local_path):
             raise RuntimeError(
