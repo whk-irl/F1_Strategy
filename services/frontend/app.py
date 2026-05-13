@@ -14,7 +14,7 @@ import json
 import os
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import mlflow.pyfunc
 import pandas as pd
@@ -93,7 +93,7 @@ ACTION_COLOR: dict[int, str] = {
 # Model manifest
 # ---------------------------------------------------------------------------
 
-_MANIFEST_PATH = Path("models_baked/manifest.json")
+_MANIFEST_PATH = Path(__file__).parent.parent.parent / "models_baked" / "manifest.json"
 
 
 @st.cache_data(show_spinner=False)
@@ -702,6 +702,9 @@ def main() -> None:
         selected_model_key = model_labels[selected_model_label]
         selected_model_meta = model_catalog[selected_model_key]
 
+        algo_badge = "🧠 DQN+PER" if selected_model_meta.get("model_type") == "dqn" else "📈 PPO"
+        st.caption(f"Active: **{algo_badge}** — {selected_model_label}")
+
         with st.expander("Model details", expanded=False):
             st.caption(selected_model_meta.get("description", ""))
             tags = selected_model_meta.get("tags", {})
@@ -762,7 +765,7 @@ def main() -> None:
                     else ""
                 )
                 lbl = f"#{drv}  {abbr}" + (f"  · {team}" if team else "")
-                driver_options[lbl] = int(drv)  # type: ignore[arg-type]
+                driver_options[lbl] = cast(int, drv)
 
             selected_driver_label = st.selectbox("Driver", list(driver_options.keys()))
             selected_driver = driver_options[selected_driver_label]
