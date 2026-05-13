@@ -762,7 +762,7 @@ def main() -> None:
                     else ""
                 )
                 lbl = f"#{drv}  {abbr}" + (f"  · {team}" if team else "")
-                driver_options[lbl] = int(drv)
+                driver_options[lbl] = int(drv)  # type: ignore[arg-type]
 
             selected_driver_label = st.selectbox("Driver", list(driver_options.keys()))
             selected_driver = driver_options[selected_driver_label]

@@ -80,10 +80,10 @@ class StrategyDQNConfig(BaseSettings):
     learning_starts: int = Field(default=10_000)
     batch_size: int = Field(default=64)
     gamma: float = Field(default=0.995)
-    train_freq: int = Field(default=4)        # gradient step every N env steps
+    train_freq: int = Field(default=4)  # gradient step every N env steps
     gradient_steps: int = Field(default=1)
     target_update_interval: int = Field(default=10_000)
-    tau: float = Field(default=1.0)           # hard target update (τ=1)
+    tau: float = Field(default=1.0)  # hard target update (τ=1)
     max_grad_norm: float = Field(default=10.0)
 
     # Exploration schedule
@@ -96,7 +96,7 @@ class StrategyDQNConfig(BaseSettings):
     per_beta: float = Field(default=0.4)
 
     # Environment
-    n_envs: int = Field(default=1)            # DQN is single-env by design
+    n_envs: int = Field(default=1)  # DQN is single-env by design
     min_drivers_per_race: int = Field(default=10)
     pit_loss_s: float = Field(default=25.0)
     noise_std: float = Field(default=0.2)
@@ -242,15 +242,10 @@ class DQNPER(DQN):
                 next_q = self.q_net_target(replay_data.next_observations)
                 next_q, _ = next_q.max(dim=1)
                 next_q = next_q.reshape(-1, 1)
-                target_q = (
-                    replay_data.rewards
-                    + (1.0 - replay_data.dones) * self.gamma * next_q
-                )
+                target_q = replay_data.rewards + (1.0 - replay_data.dones) * self.gamma * next_q
 
             current_q = self.q_net(replay_data.observations)
-            current_q = th.gather(
-                current_q, dim=1, index=replay_data.actions.long()
-            )
+            current_q = th.gather(current_q, dim=1, index=replay_data.actions.long())
 
             # TD errors (no gradient) — fed back to the buffer
             td_errors = th.abs(current_q.detach() - target_q).squeeze(1)
@@ -274,9 +269,7 @@ class DQNPER(DQN):
 
         # Target network hard / soft update (SB3 checks gradient-step count)
         if self._n_updates % self.target_update_interval == 0:
-            polyak_update(
-                self.q_net.parameters(), self.q_net_target.parameters(), self.tau
-            )
+            polyak_update(self.q_net.parameters(), self.q_net_target.parameters(), self.tau)
 
         self._n_updates += gradient_steps
         self.logger.record("train/n_updates", self._n_updates, exclude="tensorboard")

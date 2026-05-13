@@ -82,9 +82,7 @@ def load_policy(run_id: str | None = None) -> DQNPER:
             max_results=1,
         )
         if not runs:
-            raise RuntimeError(
-                "No DQN training runs found. Run `make train-policy-dqn` first."
-            )
+            raise RuntimeError("No DQN training runs found. Run `make train-policy-dqn` first.")
         run_id = runs[0].info.run_id
 
     with tempfile.TemporaryDirectory() as tmpdir:

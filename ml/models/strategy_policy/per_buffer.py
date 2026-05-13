@@ -40,8 +40,8 @@ class PrioritizedReplayBufferSamples(NamedTuple):
     next_observations: th.Tensor
     dones: th.Tensor
     rewards: th.Tensor
-    weights: th.Tensor              # importance-sampling correction weights
-    indices: npt.NDArray[Any]       # buffer positions — required for update_priorities()
+    weights: th.Tensor  # importance-sampling correction weights
+    indices: npt.NDArray[Any]  # buffer positions — required for update_priorities()
 
 
 # ---------------------------------------------------------------------------
