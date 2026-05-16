@@ -29,6 +29,14 @@ import ml.models.strategy_policy.predict_dqn as _dqn_predict
 from ml.models._loader import load_gold_seasons
 from ml.models.strategy_policy.per_buffer import PrioritizedReplayBuffer
 from ml.models.strategy_policy.train_dqn import DQNPER
+from ml.models.tire_degradation.predict import predict_stint_degradation as _lgbm_stint_predict
+from ml.models.tire_degradation.predict_sequence import (
+    load_sequence_model as _load_seq_tire_model,
+)
+from ml.models.tire_degradation.predict_sequence import (
+    predict_stint_from_history as _seq_stint_forecast,
+)
+from ml.models.tire_degradation.sequence_dataset import FEATURE_COLS as _SEQ_FEATURE_COLS
 from stable_baselines3 import PPO
 
 from services.live.obs_builder import DriverLiveState, update_from_openf1
@@ -140,6 +148,17 @@ ROUND_NAMES_BY_YEAR: dict[int, dict[int, str]] = {
         23: "Qatar GP",
         24: "Abu Dhabi GP",
     },
+}
+
+_TIRE_FORECAST_OPTIONS: dict[str, str] = {
+    "LightGBM (baseline)": "lgbm",
+    "TCN+GRU (sequence)": "tcn_gru",
+    "PatchTST (transformer)": "patch_tst",
+}
+_TIRE_FORECAST_COLORS: dict[str, str] = {
+    "lgbm": "#44aaff",
+    "tcn_gru": "#ff6644",
+    "patch_tst": "#44ff88",
 }
 
 COMPOUND_LABEL: dict[int, str] = {
@@ -276,6 +295,28 @@ def _recommend(
 @st.cache_data(show_spinner="Loading race data…")
 def _load_gold() -> pd.DataFrame:
     return load_gold_seasons([2022, 2023, 2024, 2025])
+
+
+@st.cache_resource(show_spinner=False)
+def _get_seq_tire_model(model_type: str) -> tuple[Any, Any] | None:
+    """Load and cache a PyTorch sequence tire model and its normalisation stats.
+
+    Returns None when the artifact directory is absent (model not yet trained).
+
+    Args:
+        model_type: ``"tcn_gru"`` or ``"patch_tst"``.
+
+    Returns:
+        ``(nn_model, norm_stats)`` or ``None`` if artifacts are missing.
+    """
+    from typing import Literal
+
+    mt: Literal["tcn_gru", "patch_tst"] = "patch_tst" if model_type == "patch_tst" else "tcn_gru"
+    try:
+        nn_model, norm_stats, _ = _load_seq_tire_model(mt)
+        return nn_model, norm_stats
+    except FileNotFoundError:
+        return None
 
 
 @st.cache_resource(show_spinner=False)
@@ -749,6 +790,130 @@ def _render_live_tab(policy: Any, model_type: str = "ppo") -> None:
 
 
 # ---------------------------------------------------------------------------
+# Tire degradation forecast
+# ---------------------------------------------------------------------------
+
+_OBSERVE_LAPS: int = 5  # laps shown as observed history before the forecast horizon
+
+
+def _tire_forecast_chart(
+    driver_df: pd.DataFrame,
+    tire_type: str,
+    lgbm_tire_model: Any,
+    seq_assets: tuple[Any, Any] | None,
+) -> go.Figure:
+    """Plot actual vs model-predicted tire degradation for the longest stint.
+
+    Uses the first ``_OBSERVE_LAPS`` laps as observed history; the model
+    forecasts all remaining laps autoregressively.  For LightGBM the scalar
+    :func:`predict_stint_degradation` interface is used; for sequence models
+    :func:`predict_stint_from_history` is used.
+
+    Args:
+        driver_df: Gold DataFrame filtered to one driver and one race.
+        tire_type: ``"lgbm"``, ``"tcn_gru"``, or ``"patch_tst"``.
+        lgbm_tire_model: Loaded MLflow pyfunc LightGBM model (always available).
+        seq_assets: ``(nn_model, norm_stats)`` for sequence models, or None.
+
+    Returns:
+        Plotly Figure (empty data list if not enough laps to plot).
+    """
+    fig = go.Figure()
+
+    if "stint_number" not in driver_df.columns or driver_df["stint_number"].isna().all():
+        return fig
+
+    stint_counts = (
+        driver_df.dropna(subset=["stint_number"]).groupby("stint_number")["lap_number"].count()
+    )
+    if stint_counts.empty:
+        return fig
+
+    longest_stint = int(stint_counts.idxmax())
+    stint_df = (
+        driver_df[driver_df["stint_number"] == longest_stint]
+        .sort_values("lap_number")
+        .dropna(subset=["lap_time_delta_s", "tyre_life_laps"])
+        .copy()
+    )
+    # Fill columns required by sequence models.
+    stint_df["is_fresh_tyre"] = stint_df["is_fresh_tyre"].fillna(False).astype(float)
+    stint_df["tyre_deg_rate_s_per_lap"] = stint_df["tyre_deg_rate_s_per_lap"].fillna(0.0)
+
+    if len(stint_df) < _OBSERVE_LAPS + 1:
+        return fig
+
+    tyre_life = stint_df["tyre_life_laps"].tolist()
+    actual_delta = stint_df["lap_time_delta_s"].tolist()
+    n_forecast = len(stint_df) - _OBSERVE_LAPS
+    forecast_tyre_life = tyre_life[_OBSERVE_LAPS:]
+
+    # Actual scatter
+    fig.add_trace(
+        go.Scatter(
+            x=tyre_life,
+            y=actual_delta,
+            mode="markers",
+            name="Actual",
+            marker={"color": "#aaaaaa", "size": 6, "symbol": "circle"},
+        )
+    )
+
+    # Vertical split between observed and forecast
+    split_x = tyre_life[_OBSERVE_LAPS - 1]
+    fig.add_vline(
+        x=split_x,
+        line_dash="dot",
+        line_color="#555555",
+        annotation_text=f"← {_OBSERVE_LAPS} obs | forecast →",
+        annotation_position="top",
+    )
+
+    # Model forecast
+    observed_df = stint_df.head(_OBSERVE_LAPS)
+    compound_enc = int(stint_df["compound_encoded"].iloc[0])
+    color = _TIRE_FORECAST_COLORS.get(tire_type, "#ffffff")
+    model_label = next((k for k, v in _TIRE_FORECAST_OPTIONS.items() if v == tire_type), tire_type)
+
+    preds: list[float] = []
+    if tire_type == "lgbm":
+        rp_start = float(observed_df["race_progress"].iloc[-1])
+        baseline_delta = float(observed_df["lap_delta_to_field_median_s"].mean())
+        raw = _lgbm_stint_predict(
+            n_forecast, compound_enc, rp_start, baseline_delta, lgbm_tire_model
+        )
+        preds = list(raw)
+    elif seq_assets is not None:
+        nn_model, norm_stats = seq_assets
+        history = observed_df[_SEQ_FEATURE_COLS].copy()
+        raw_seq = _seq_stint_forecast(history, n_forecast, nn_model, norm_stats)
+        preds = list(raw_seq)
+
+    if preds:
+        fig.add_trace(
+            go.Scatter(
+                x=forecast_tyre_life,
+                y=preds,
+                mode="lines+markers",
+                name=f"{model_label}",
+                line={"color": color, "width": 2},
+                marker={"symbol": "diamond", "size": 5},
+            )
+        )
+
+    compound_name = COMPOUND_LABEL.get(compound_enc, "?")
+    fig.update_layout(
+        title=f"Tire Degradation — Stint {longest_stint} ({compound_name})",
+        xaxis_title="Tyre Age (laps)",
+        yaxis_title="Lap Time Delta (s vs driver stint median)",
+        template="plotly_dark",
+        height=350,
+        legend={"orientation": "h", "yanchor": "bottom", "y": 1.02, "xanchor": "right", "x": 1},
+    )
+    return fig
+
+
+# ---------------------------------------------------------------------------
 # Main app
 # ---------------------------------------------------------------------------
 
@@ -805,6 +970,15 @@ def main() -> None:
             for tag_k, tag_v in tags.items():
                 st.caption(f"**{tag_k}:** {tag_v}")
 
+        st.divider()
+        selected_tire_label = st.selectbox(
+            "Tire forecast model",
+            list(_TIRE_FORECAST_OPTIONS.keys()),
+            key="tire_forecast_model",
+            help="Model used to predict tire degradation in the Replay tab forecast panel.",
+        )
+        selected_tire_type = _TIRE_FORECAST_OPTIONS[selected_tire_label]
+
     # ── Load the selected model set (cached per unique paths) ────────────────
     model_type: str = selected_model_meta.get("model_type", "ppo")
     tire_model, sc_model, policy = _load_models(
@@ -814,6 +988,16 @@ def main() -> None:
         policy_path=selected_model_meta["policy_path"],
         model_type=model_type,
     )
+
+    # Load sequence tire model when needed (cached per model type).
+    seq_tire_assets: tuple[Any, Any] | None = None
+    if selected_tire_type != "lgbm":
+        seq_tire_assets = _get_seq_tire_model(selected_tire_type)
+        if seq_tire_assets is None:
+            st.sidebar.warning(
+                f"Sequence tire model `{selected_tire_type}` not found. "
+                "Run `make train-tire-tcn` or `make train-tire-pst` first."
+            )
 
     st.info(
         "**📊 Race Replay** — replay any race from 2022–2025 and see what Pitwall AI would have "
@@ -1054,6 +1238,37 @@ def main() -> None:
                         "AI Would Pit",
                     ]
                     st.dataframe(display, use_container_width=True, hide_index=True)
+
+                st.divider()
+                with st.expander("🔬 Tire Degradation Forecast", expanded=True):
+                    driver_mask = race_df["driver_number"] == str(selected_driver)
+                    if not driver_mask.any():
+                        driver_mask = race_df["driver_number"] == selected_driver
+                    driver_race_df = race_df[driver_mask].copy()
+
+                    if driver_race_df.empty:
+                        st.info("No gold data for this driver.")
+                    else:
+                        fig_tire = _tire_forecast_chart(
+                            driver_race_df,
+                            selected_tire_type,
+                            tire_model,
+                            seq_tire_assets,
+                        )
+                        if fig_tire.data:
+                            st.plotly_chart(fig_tire, use_container_width=True)
+                            st.caption(
+                                f"Grey dots = actual recorded deltas from gold data.  "
+                                f"First **{_OBSERVE_LAPS} laps** used as observed history; "
+                                f"**{selected_tire_label}** forecasts the remainder "
+                                "autoregressively.  "
+                                "Switch the tire model in the sidebar to compare architectures."
+                            )
+                        else:
+                            st.info(
+                                "Not enough stint data to plot (need at least "
+                                f"{_OBSERVE_LAPS + 1} clean laps in one stint)."
+                            )
 
     # ═════════════════════════════════════════════════════════════════════════
     # TAB 2 — Live Race

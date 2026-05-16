@@ -21,7 +21,7 @@ TRAINING_SEASONS ?= 2021,2022,2023,2024
 TOTAL_TIMESTEPS  ?= 1000000
 
 .PHONY: help setup up down ingest ingest-season \
-        train-tire train-safety-car validate-simulator train-policy demo \
+        train-tire train-tire-tcn train-tire-pst train-safety-car validate-simulator train-policy demo \
         ecr-login build-images push-images \
         submit-train-tire submit-train-safety-car submit-train-policy \
         kubeconfig-update \
@@ -67,6 +67,12 @@ ingest-season:  ## Ingest all races for a full season (SEASON)
 # ---------------------------------------------------------------------------
 train-tire:  ## Train tire degradation model locally (CPU)
 	uv run python -m ml.models.tire_degradation.train
+
+train-tire-tcn:  ## Train TCN+GRU sequence tire model (2022-2025, PITWALL_STORAGE_BACKEND=local)
+	PITWALL_STORAGE_BACKEND=local uv run python -m ml.models.tire_degradation.train_sequence --model tcn_gru
+
+train-tire-pst:  ## Train PatchTST sequence tire model (2022-2025, PITWALL_STORAGE_BACKEND=local)
+	PITWALL_STORAGE_BACKEND=local uv run python -m ml.models.tire_degradation.train_sequence --model patch_tst
 
 train-safety-car:  ## Train safety-car model locally (CPU)
 	uv run python -m ml.models.safety_car.train
