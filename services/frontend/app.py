@@ -37,8 +37,8 @@ from ml.models.tire_degradation.predict import predict_stint_degradation as _lgb
 _SEQ_MODELS_AVAILABLE = False
 _seq_import_error: str = ""
 try:
+    from ml.models.tire_degradation.wrapper import SequenceTireWrapper
     from ml.models.tire_degradation.predict_sequence import (
-        SequenceTireWrapper,
         load_sequence_model as _load_seq_tire_model,
         predict_stint_from_history as _seq_stint_forecast,
     )
