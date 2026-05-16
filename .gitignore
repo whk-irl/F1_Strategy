@@ -112,6 +112,13 @@ mlflow.db
 *.pkl
 !models_baked/tire/model.pkl
 !models_baked/sc/model.pkl
+# PyTorch sequence tire models
+!models_baked/tire_tcn_gru/model.pt
+!models_baked/tire_tcn_gru/norm_stats.json
+!models_baked/tire_tcn_gru/config.json
+!models_baked/tire_patch_tst/model.pt
+!models_baked/tire_patch_tst/norm_stats.json
+!models_baked/tire_patch_tst/config.json
 *.joblib
 *.safetensors
 checkpoints/
