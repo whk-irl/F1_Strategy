@@ -25,7 +25,7 @@ import typer
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from torch.optim import AdamW
-from torch.optim.lr_scheduler import CosineAnnealingLR
+from torch.optim.lr_scheduler import CosineAnnealingLR, LinearLR, SequentialLR
 from torch.utils.data import DataLoader
 
 from ml.models._loader import load_gold_seasons
@@ -63,10 +63,11 @@ class SequenceTireConfig(BaseSettings):
     val_rounds: list[int] = Field(default=[5, 10, 15, 20])
     seq_len: int = Field(default=10)
     batch_size: int = Field(default=512)
-    epochs: int = Field(default=60)
-    lr: float = Field(default=1e-3)
+    epochs: int = Field(default=100)
+    lr: float = Field(default=3e-4)
     weight_decay: float = Field(default=1e-4)
-    patience: int = Field(default=10)
+    warmup_epochs: int = Field(default=5)
+    patience: int = Field(default=20)
 
     # Shared architecture
     d_model: int = Field(default=64)
@@ -266,7 +267,22 @@ def train(config: SequenceTireConfig | None = None) -> None:
     model = build_model(config, n_features, config.seq_len).to(device)
 
     optimizer = AdamW(model.parameters(), lr=config.lr, weight_decay=config.weight_decay)
-    scheduler = CosineAnnealingLR(optimizer, T_max=config.epochs)
+    # Linear warmup from lr/10 → lr over warmup_epochs, then cosine anneal to 0.
+    warmup = LinearLR(
+        optimizer,
+        start_factor=0.1,
+        end_factor=1.0,
+        total_iters=config.warmup_epochs,
+    )
+    cosine = CosineAnnealingLR(
+        optimizer,
+        T_max=max(1, config.epochs - config.warmup_epochs),
+    )
+    scheduler = SequentialLR(
+        optimizer,
+        schedulers=[warmup, cosine],
+        milestones=[config.warmup_epochs],
+    )
     # HuberLoss is robust to the occasional outlier lap (VSC exit, slow zone)
     # that would distort MSE training.
     criterion = nn.HuberLoss(delta=1.0)
@@ -286,6 +302,7 @@ def train(config: SequenceTireConfig | None = None) -> None:
                 "epochs": config.epochs,
                 "batch_size": config.batch_size,
                 "lr": config.lr,
+                "warmup_epochs": config.warmup_epochs,
                 "weight_decay": config.weight_decay,
                 "patience": config.patience,
                 **{

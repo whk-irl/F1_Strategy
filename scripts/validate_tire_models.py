@@ -45,8 +45,14 @@ print("Loading gold data...")
 df = load_gold_seasons(SEASONS)
 print(f"  {len(df):,} total laps")
 
+# Load training norm stats from the baked TCN+GRU artifact so the validation
+# dataset uses the same feature scale the model was trained on.
+_, train_norm_stats, _ = load_sequence_model("tcn_gru")
+
 # Build validation dataset using the same held-out rounds as training.
-val_ds = StintSequenceDataset(df, val_rounds=VAL_ROUNDS, is_val=True)
+val_ds = StintSequenceDataset(
+    df, norm_stats=train_norm_stats, val_rounds=VAL_ROUNDS, is_val=True
+)
 print(f"  {len(val_ds):,} validation windows  (rounds {VAL_ROUNDS}, all seasons)")
 
 all_x: np.ndarray = torch.stack(val_ds._xs).numpy()   # (N, seq_len, 8)
