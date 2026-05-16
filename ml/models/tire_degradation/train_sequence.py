@@ -25,7 +25,7 @@ import typer
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from torch.optim import AdamW
-from torch.optim.lr_scheduler import CosineAnnealingLR
+from torch.optim.lr_scheduler import CosineAnnealingLR, LinearLR, SequentialLR
 from torch.utils.data import DataLoader
 
 from ml.models._loader import load_gold_seasons
@@ -61,26 +61,27 @@ class SequenceTireConfig(BaseSettings):
     model_type: Literal["tcn_gru", "patch_tst"] = Field(default="tcn_gru")
     training_seasons: list[int] = Field(default=[2022, 2023, 2024, 2025])
     val_rounds: list[int] = Field(default=[5, 10, 15, 20])
-    seq_len: int = Field(default=10)
+    seq_len: int = Field(default=15)
     batch_size: int = Field(default=512)
-    epochs: int = Field(default=60)
-    lr: float = Field(default=1e-3)
+    epochs: int = Field(default=150)
+    lr: float = Field(default=3e-4)
     weight_decay: float = Field(default=1e-4)
-    patience: int = Field(default=10)
+    warmup_epochs: int = Field(default=5)
+    patience: int = Field(default=25)
 
     # Shared architecture
-    d_model: int = Field(default=64)
-    dropout: float = Field(default=0.1)
+    d_model: int = Field(default=128)
+    dropout: float = Field(default=0.2)
 
     # TCN+GRU only
-    n_tcn_layers: int = Field(default=4)
-    gru_hidden: int = Field(default=64)
+    n_tcn_layers: int = Field(default=6)
+    gru_hidden: int = Field(default=128)
     kernel_size: int = Field(default=3)
 
     # PatchTST only
     patch_len: int = Field(default=5)
-    nhead: int = Field(default=4)
-    num_transformer_layers: int = Field(default=2)
+    nhead: int = Field(default=8)
+    num_transformer_layers: int = Field(default=3)
 
     mlflow_tracking_uri: str = Field(
         default="mlruns",
@@ -266,10 +267,25 @@ def train(config: SequenceTireConfig | None = None) -> None:
     model = build_model(config, n_features, config.seq_len).to(device)
 
     optimizer = AdamW(model.parameters(), lr=config.lr, weight_decay=config.weight_decay)
-    scheduler = CosineAnnealingLR(optimizer, T_max=config.epochs)
-    # HuberLoss is robust to the occasional outlier lap (VSC exit, slow zone)
-    # that would distort MSE training.
-    criterion = nn.HuberLoss(delta=1.0)
+    # Linear warmup from lr/10 → lr over warmup_epochs, then cosine anneal to 0.
+    warmup = LinearLR(
+        optimizer,
+        start_factor=0.1,
+        end_factor=1.0,
+        total_iters=config.warmup_epochs,
+    )
+    cosine = CosineAnnealingLR(
+        optimizer,
+        T_max=max(1, config.epochs - config.warmup_epochs),
+    )
+    scheduler = SequentialLR(
+        optimizer,
+        schedulers=[warmup, cosine],
+        milestones=[config.warmup_epochs],
+    )
+    # delta=0.5 tightens focus on typical lap variation (~0.3–0.5 s range)
+    # while still capping the gradient from genuine outliers (SC, crashes).
+    criterion = nn.HuberLoss(delta=0.5)
 
     best_val_mae = float("inf")
     best_state: dict[str, torch.Tensor] = {}
@@ -286,6 +302,7 @@ def train(config: SequenceTireConfig | None = None) -> None:
                 "epochs": config.epochs,
                 "batch_size": config.batch_size,
                 "lr": config.lr,
+                "warmup_epochs": config.warmup_epochs,
                 "weight_decay": config.weight_decay,
                 "patience": config.patience,
                 **{

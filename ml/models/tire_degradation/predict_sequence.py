@@ -35,6 +35,54 @@ from ml.models.tire_degradation.sequence_dataset import (
 _REPO_ROOT = pathlib.Path(__file__).parent.parent.parent.parent
 
 
+class SequenceTireWrapper:
+    """Exposes a sequence tire model via the MLflow pyfunc ``.predict(df)`` interface.
+
+    ``F1RaceEnv`` calls ``tire_model.predict(df)`` to batch-precompute a tire
+    degradation lookup table at env init.  This wrapper vectorises the
+    steady-state approximation so the env needs no changes.
+
+    Args:
+        model: Trained sequence model in eval mode.
+        norm_stats: Normalisation statistics matching the model.
+    """
+
+    def __init__(self, model: nn.Module, norm_stats: NormStats) -> None:
+        self._model = model
+        self._ns = norm_stats
+
+    def predict(self, df: pd.DataFrame) -> _F32Array:
+        """Batch-predict lap-time deltas for a feature DataFrame.
+
+        Each row is treated as a steady-state tyre state: the single step is
+        repeated ``SEQ_LEN`` times to form the history window.  One model
+        forward pass handles all rows simultaneously.
+
+        Args:
+            df: DataFrame with columns matching :data:`FEATURE_COLS` (unknown
+                columns are filled with zeros; missing new columns use neutral
+                defaults).
+
+        Returns:
+            Float32 array of shape ``(len(df),)`` with predicted deltas.
+        """
+        n = len(df)
+        step = np.zeros((n, N_FEATURES), dtype=np.float32)
+        neutral = {"sc_laps_since_last": 50.0, "position": 10.0}
+        for col_idx, col in enumerate(FEATURE_COLS):
+            if col in df.columns:
+                step[:, col_idx] = df[col].to_numpy(dtype=np.float32)
+            elif col in neutral:
+                step[:, col_idx] = neutral[col]
+        # Tile each row into (SEQ_LEN, N_FEATURES) — single forward pass.
+        windows = np.tile(step[:, np.newaxis, :], (1, SEQ_LEN, 1))
+        normed = (windows - self._ns.mean) / (self._ns.std + 1e-8)
+        x = torch.from_numpy(normed.astype(np.float32))
+        with torch.no_grad():
+            preds = self._model(x).numpy()
+        return preds.astype(np.float32)
+
+
 def load_sequence_model(
     model_type: Literal["tcn_gru", "patch_tst"],
 ) -> tuple[nn.Module, NormStats, dict[str, Any]]:
@@ -112,6 +160,8 @@ def predict_lap_time_delta(
     lap_delta_to_field_median_s: float,
     model: nn.Module,
     norm_stats: NormStats,
+    sc_laps_since_last: float = 50.0,
+    position: float = 10.0,
 ) -> float:
     """Predict the lap time delta for a single tyre state (scalar interface).
 
@@ -135,6 +185,8 @@ def predict_lap_time_delta(
         lap_delta_to_field_median_s: Car's typical pace vs field (seconds).
         model: Pre-loaded sequence model in eval mode.
         norm_stats: Normalisation statistics matching the model.
+        sc_laps_since_last: Laps since the last safety car (default 50 = none).
+        position: Current race position (default 10 = midfield).
 
     Returns:
         Predicted lap time delta in seconds relative to the driver's stint
@@ -150,6 +202,8 @@ def predict_lap_time_delta(
             lap_delta_to_field_median_s,
             0.0,  # lap_time_delta_s — unknown for current step; use 0.0 as neutral
             0.0,  # tyre_deg_rate_s_per_lap — ditto
+            sc_laps_since_last,
+            position,
         ],
         dtype=np.float32,
     )
@@ -228,6 +282,10 @@ def predict_stint_from_history(
                     "lap_time_delta_s": delta,
                     # Degrade rate derived from successive predicted deltas.
                     "tyre_deg_rate_s_per_lap": delta - last_delta,
+                    # SC counter increments each lap during green-flag running.
+                    "sc_laps_since_last": min(float(last_row["sc_laps_since_last"]) + 1.0, 99.0),
+                    # Position carried forward — not predictable in a pure stint forecast.
+                    "position": float(last_row["position"]),
                 }
             ]
         )
@@ -276,6 +334,8 @@ def predict_stint_degradation(
                 "lap_delta_to_field_median_s": lap_delta_to_field_median_s,
                 "lap_time_delta_s": 0.0,
                 "tyre_deg_rate_s_per_lap": 0.0,
+                "sc_laps_since_last": 50.0,
+                "position": 10.0,
             }
         ]
     )

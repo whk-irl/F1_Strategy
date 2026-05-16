@@ -31,9 +31,8 @@ from ml.models.strategy_policy.per_buffer import PrioritizedReplayBuffer
 from ml.models.strategy_policy.train_dqn import DQNPER
 from ml.models.tire_degradation.predict import predict_stint_degradation as _lgbm_stint_predict
 from ml.models.tire_degradation.predict_sequence import (
+    SequenceTireWrapper,
     load_sequence_model as _load_seq_tire_model,
-)
-from ml.models.tire_degradation.predict_sequence import (
     predict_stint_from_history as _seq_stint_forecast,
 )
 from ml.models.tire_degradation.sequence_dataset import FEATURE_COLS as _SEQ_FEATURE_COLS
@@ -839,6 +838,8 @@ def _tire_forecast_chart(
     # Fill columns required by sequence models.
     stint_df["is_fresh_tyre"] = stint_df["is_fresh_tyre"].fillna(False).astype(float)
     stint_df["tyre_deg_rate_s_per_lap"] = stint_df["tyre_deg_rate_s_per_lap"].fillna(0.0)
+    stint_df["sc_laps_since_last"] = stint_df["sc_laps_since_last"].fillna(50.0)
+    stint_df["position"] = stint_df["position"].fillna(10.0)
 
     if len(stint_df) < _OBSERVE_LAPS + 1:
         return fig
@@ -972,10 +973,14 @@ def main() -> None:
 
         st.divider()
         selected_tire_label = st.selectbox(
-            "Tire forecast model",
+            "Tire model",
             list(_TIRE_FORECAST_OPTIONS.keys()),
             key="tire_forecast_model",
-            help="Model used to predict tire degradation in the Replay tab forecast panel.",
+            help=(
+                "Tire degradation model used in the race simulator and the "
+                "forecast panel. LightGBM uses point-in-time features; "
+                "TCN+GRU / PatchTST use a 15-lap history window."
+            ),
         )
         selected_tire_type = _TIRE_FORECAST_OPTIONS[selected_tire_label]
 
@@ -998,6 +1003,14 @@ def main() -> None:
                 f"Sequence tire model `{selected_tire_type}` not found. "
                 "Run `make train-tire-tcn` or `make train-tire-pst` first."
             )
+
+    # Use the sequence model in the simulator when one is selected and available.
+    # SequenceTireWrapper exposes the same .predict(df) interface as the LightGBM pyfunc.
+    effective_tire_model = (
+        SequenceTireWrapper(seq_tire_assets[0], seq_tire_assets[1])
+        if seq_tire_assets is not None
+        else tire_model
+    )
 
     st.info(
         "**📊 Race Replay** — replay any race from 2022–2025 and see what Pitwall AI would have "
@@ -1064,12 +1077,20 @@ def main() -> None:
             selected_driver_label = st.selectbox("Driver", list(driver_options.keys()))
             selected_driver = driver_options[selected_driver_label]
 
-            # Auto-run whenever season, race or driver changes.
-            cache_key = f"{selected_model_key}_{selected_season}_{selected_round}_{selected_driver}"
+            # Auto-run whenever season, race, driver, or tire model changes.
+            cache_key = (
+                f"{selected_model_key}_{selected_tire_type}_"
+                f"{selected_season}_{selected_round}_{selected_driver}"
+            )
             if st.session_state.get("replay_key") != cache_key:
                 with st.spinner("Simulating race…"):
                     st.session_state.replay = _run_replay(
-                        race_df, selected_driver, tire_model, sc_model, policy, model_type
+                        race_df,
+                        selected_driver,
+                        effective_tire_model,
+                        sc_model,
+                        policy,
+                        model_type,
                     )
                     st.session_state.replay_key = cache_key
 
