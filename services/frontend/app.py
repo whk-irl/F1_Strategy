@@ -839,6 +839,8 @@ def _tire_forecast_chart(
     # Fill columns required by sequence models.
     stint_df["is_fresh_tyre"] = stint_df["is_fresh_tyre"].fillna(False).astype(float)
     stint_df["tyre_deg_rate_s_per_lap"] = stint_df["tyre_deg_rate_s_per_lap"].fillna(0.0)
+    stint_df["sc_laps_since_last"] = stint_df["sc_laps_since_last"].fillna(50.0)
+    stint_df["position"] = stint_df["position"].fillna(10.0)
 
     if len(stint_df) < _OBSERVE_LAPS + 1:
         return fig
