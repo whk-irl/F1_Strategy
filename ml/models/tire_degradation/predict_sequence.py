@@ -34,6 +34,14 @@ from ml.models.tire_degradation.sequence_dataset import (
 
 _REPO_ROOT = pathlib.Path(__file__).parent.parent.parent.parent
 
+__all__ = [
+    "SequenceTireWrapper",
+    "load_sequence_model",
+    "predict_lap_time_delta",
+    "predict_stint_from_history",
+    "predict_stint_degradation",
+]
+
 
 class SequenceTireWrapper:
     """Exposes a sequence tire model via the MLflow pyfunc ``.predict(df)`` interface.
