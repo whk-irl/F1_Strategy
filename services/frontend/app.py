@@ -30,12 +30,27 @@ from ml.models._loader import load_gold_seasons
 from ml.models.strategy_policy.per_buffer import PrioritizedReplayBuffer
 from ml.models.strategy_policy.train_dqn import DQNPER
 from ml.models.tire_degradation.predict import predict_stint_degradation as _lgbm_stint_predict
-from ml.models.tire_degradation.predict_sequence import (
-    SequenceTireWrapper,
-    load_sequence_model as _load_seq_tire_model,
-    predict_stint_from_history as _seq_stint_forecast,
-)
-from ml.models.tire_degradation.sequence_dataset import FEATURE_COLS as _SEQ_FEATURE_COLS
+
+# Sequence tire models are optional — if the import fails (e.g. torch build mismatch
+# on the deployment platform) the app degrades to LightGBM-only mode instead of
+# crashing entirely.  The actual error is logged below so it shows up in cloud logs.
+_SEQ_MODELS_AVAILABLE = False
+_seq_import_error: str = ""
+try:
+    from ml.models.tire_degradation.predict_sequence import (
+        SequenceTireWrapper,
+        load_sequence_model as _load_seq_tire_model,
+        predict_stint_from_history as _seq_stint_forecast,
+    )
+    from ml.models.tire_degradation.sequence_dataset import FEATURE_COLS as _SEQ_FEATURE_COLS
+    _SEQ_MODELS_AVAILABLE = True
+except Exception as _e:  # noqa: BLE001
+    import traceback as _tb
+    _seq_import_error = _tb.format_exc()
+    SequenceTireWrapper = None  # type: ignore[assignment, misc]
+    _load_seq_tire_model = None  # type: ignore[assignment]
+    _seq_stint_forecast = None  # type: ignore[assignment]
+    _SEQ_FEATURE_COLS: list[str] = []
 from stable_baselines3 import PPO
 
 from services.live.obs_builder import DriverLiveState, update_from_openf1
@@ -310,9 +325,11 @@ def _get_seq_tire_model(model_type: str) -> tuple[Any, Any] | None:
     """
     from typing import Literal
 
+    if not _SEQ_MODELS_AVAILABLE or _load_seq_tire_model is None:
+        return None
     mt: Literal["tcn_gru", "patch_tst"] = "patch_tst" if model_type == "patch_tst" else "tcn_gru"
     try:
-        nn_model, norm_stats, _ = _load_seq_tire_model(mt)
+        nn_model, norm_stats, _ = _load_seq_tire_model(mt)  # type: ignore[misc]
         return nn_model, norm_stats
     except FileNotFoundError:
         return None
@@ -995,6 +1012,8 @@ def main() -> None:
     )
 
     # Load sequence tire model when needed (cached per model type).
+    if not _SEQ_MODELS_AVAILABLE and _seq_import_error:
+        st.sidebar.error(f"Sequence models unavailable — import failed:\n```\n{_seq_import_error}\n```")
     seq_tire_assets: tuple[Any, Any] | None = None
     if selected_tire_type != "lgbm":
         seq_tire_assets = _get_seq_tire_model(selected_tire_type)
@@ -1007,8 +1026,8 @@ def main() -> None:
     # Use the sequence model in the simulator when one is selected and available.
     # SequenceTireWrapper exposes the same .predict(df) interface as the LightGBM pyfunc.
     effective_tire_model = (
-        SequenceTireWrapper(seq_tire_assets[0], seq_tire_assets[1])
-        if seq_tire_assets is not None
+        SequenceTireWrapper(seq_tire_assets[0], seq_tire_assets[1])  # type: ignore[misc]
+        if (seq_tire_assets is not None and SequenceTireWrapper is not None)
         else tire_model
     )
 
