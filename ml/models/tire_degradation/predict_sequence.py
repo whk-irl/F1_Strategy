@@ -32,7 +32,11 @@ from ml.models.tire_degradation.sequence_dataset import (
     NormStats,
 )
 
-_REPO_ROOT = pathlib.Path(__file__).parent.parent.parent.parent
+_REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent.parent.parent
+# Fallback for when the module is imported from a site-packages installation
+# (Streamlit Cloud installs local packages via pip; CWD is the repo root there).
+if not (_REPO_ROOT / "models_baked").exists():
+    _REPO_ROOT = pathlib.Path.cwd()
 
 # Re-export SequenceTireWrapper from the dedicated wrapper module so callers
 # that use ``from predict_sequence import SequenceTireWrapper`` still work.
