@@ -19,7 +19,7 @@ from torch.utils.data import Dataset
 
 _F32Array = npt.NDArray[np.float32]
 
-SEQ_LEN: int = 10
+SEQ_LEN: int = 15
 
 FEATURE_COLS: list[str] = [
     "tyre_life_laps",
@@ -30,6 +30,9 @@ FEATURE_COLS: list[str] = [
     "lap_delta_to_field_median_s",
     "lap_time_delta_s",
     "tyre_deg_rate_s_per_lap",
+    # Additional context features
+    "sc_laps_since_last",   # track-state recovery signal after restarts
+    "position",             # clean-air vs traffic context
 ]
 
 TARGET_COL: str = "lap_time_delta_s"
@@ -236,6 +239,13 @@ class StintSequenceDataset(Dataset[tuple[torch.Tensor, torch.Tensor]]):
         clean["tyre_deg_rate_s_per_lap"] = (
             clean["tyre_deg_rate_s_per_lap"].fillna(0.0).astype(np.float32)
         )
+        # Fill NaN with neutral values before normalisation.
+        # sc_laps_since_last: 50 ≈ "no SC in living memory"
+        clean["sc_laps_since_last"] = (
+            clean["sc_laps_since_last"].fillna(50.0).astype(np.float32)
+        )
+        # position: 10 ≈ midfield (avoids biasing toward front/back)
+        clean["position"] = clean["position"].fillna(10.0).astype(np.float32)
         return clean
 
     def __len__(self) -> int:

@@ -29,12 +29,12 @@ from ml.models.tire_degradation.sequence_dataset import (
 # ---------------------------------------------------------------------------
 
 
-def _make_gold_df(n_stints: int = 3, laps_per_stint: int = 15) -> pd.DataFrame:
+def _make_gold_df(n_stints: int = 3, laps_per_stint: int = 20) -> pd.DataFrame:
     """Build a minimal gold-like DataFrame for dataset construction tests.
 
     Args:
         n_stints: Number of distinct (driver, stint) combinations.
-        laps_per_stint: Laps per stint; must be > SEQ_LEN (10) to produce windows.
+        laps_per_stint: Laps per stint; must be > SEQ_LEN (15) to produce windows.
 
     Returns:
         DataFrame with all gold columns expected by :class:`StintSequenceDataset`.
@@ -58,6 +58,8 @@ def _make_gold_df(n_stints: int = 3, laps_per_stint: int = 15) -> pd.DataFrame:
                     "lap_delta_to_field_median_s": float(np.random.normal(0, 0.1)),
                     "lap_time_delta_s": float(np.random.normal(0, 0.5)),
                     "tyre_deg_rate_s_per_lap": float(np.random.normal(0.05, 0.02)),
+                    "sc_laps_since_last": float(lap + 10),
+                    "position": float((stint_idx % 10) + 1),
                     "pit_in_this_lap": False,
                     "pit_out_this_lap": False,
                     "is_accurate": True,
@@ -135,15 +137,15 @@ class TestStintSequenceDataset:
     def test_dataset_builds_and_nonempty(self) -> None:
         """Dataset builds from a small gold-like DataFrame and has samples."""
         np.random.seed(42)
-        df = _make_gold_df(n_stints=3, laps_per_stint=15)
+        df = _make_gold_df(n_stints=3, laps_per_stint=20)
         ds = StintSequenceDataset(df)
-        # 3 stints × (15 - SEQ_LEN) windows = 3 × 5 = 15
+        # 3 stints × (20 - SEQ_LEN) windows = 3 × 5 = 15
         assert len(ds) == 15
 
     def test_tensor_shapes(self) -> None:
         """Each sample has the correct tensor shapes."""
         np.random.seed(42)
-        df = _make_gold_df(n_stints=2, laps_per_stint=12)
+        df = _make_gold_df(n_stints=2, laps_per_stint=17)
         ds = StintSequenceDataset(df)
         x, y = ds[0]
         assert x.shape == (SEQ_LEN, N_FEATURES)
@@ -152,7 +154,7 @@ class TestStintSequenceDataset:
     def test_tensor_dtype(self) -> None:
         """Tensors are float32."""
         np.random.seed(42)
-        df = _make_gold_df(n_stints=1, laps_per_stint=12)
+        df = _make_gold_df(n_stints=1, laps_per_stint=17)
         ds = StintSequenceDataset(df)
         x, y = ds[0]
         assert x.dtype == torch.float32
@@ -161,7 +163,7 @@ class TestStintSequenceDataset:
     def test_val_split_disjoint(self) -> None:
         """Train and val splits share no round_number values."""
         np.random.seed(42)
-        base = _make_gold_df(n_stints=1, laps_per_stint=15)
+        base = _make_gold_df(n_stints=1, laps_per_stint=17)
         # Add laps from a second round for the val split
         val_df = base.copy()
         val_df["round_number"] = 5
@@ -181,7 +183,7 @@ class TestStintSequenceDataset:
     def test_norm_stats_attribute(self) -> None:
         """norm_stats is accessible as a public attribute."""
         np.random.seed(42)
-        df = _make_gold_df(n_stints=1, laps_per_stint=12)
+        df = _make_gold_df(n_stints=1, laps_per_stint=17)
         ds = StintSequenceDataset(df)
         assert isinstance(ds.norm_stats, NormStats)
         assert ds.norm_stats.mean.shape == (N_FEATURES,)
@@ -320,6 +322,8 @@ class TestAutoregressive:
                 "lap_delta_to_field_median_s": np.zeros(5, dtype=np.float32),
                 "lap_time_delta_s": np.random.randn(5).astype(np.float32) * 0.3,
                 "tyre_deg_rate_s_per_lap": np.ones(5, dtype=np.float32) * 0.05,
+                "sc_laps_since_last": np.ones(5, dtype=np.float32) * 50.0,
+                "position": np.ones(5, dtype=np.float32) * 10.0,
             }
         )
         preds = predict_stint_from_history(history, n_forecast_laps=8, model=model, norm_stats=norm)

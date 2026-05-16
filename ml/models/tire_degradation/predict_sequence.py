@@ -112,6 +112,8 @@ def predict_lap_time_delta(
     lap_delta_to_field_median_s: float,
     model: nn.Module,
     norm_stats: NormStats,
+    sc_laps_since_last: float = 50.0,
+    position: float = 10.0,
 ) -> float:
     """Predict the lap time delta for a single tyre state (scalar interface).
 
@@ -135,6 +137,8 @@ def predict_lap_time_delta(
         lap_delta_to_field_median_s: Car's typical pace vs field (seconds).
         model: Pre-loaded sequence model in eval mode.
         norm_stats: Normalisation statistics matching the model.
+        sc_laps_since_last: Laps since the last safety car (default 50 = none).
+        position: Current race position (default 10 = midfield).
 
     Returns:
         Predicted lap time delta in seconds relative to the driver's stint
@@ -150,6 +154,8 @@ def predict_lap_time_delta(
             lap_delta_to_field_median_s,
             0.0,  # lap_time_delta_s — unknown for current step; use 0.0 as neutral
             0.0,  # tyre_deg_rate_s_per_lap — ditto
+            sc_laps_since_last,
+            position,
         ],
         dtype=np.float32,
     )
@@ -228,6 +234,10 @@ def predict_stint_from_history(
                     "lap_time_delta_s": delta,
                     # Degrade rate derived from successive predicted deltas.
                     "tyre_deg_rate_s_per_lap": delta - last_delta,
+                    # SC counter increments each lap during green-flag running.
+                    "sc_laps_since_last": min(float(last_row["sc_laps_since_last"]) + 1.0, 99.0),
+                    # Position carried forward — not predictable in a pure stint forecast.
+                    "position": float(last_row["position"]),
                 }
             ]
         )
@@ -276,6 +286,8 @@ def predict_stint_degradation(
                 "lap_delta_to_field_median_s": lap_delta_to_field_median_s,
                 "lap_time_delta_s": 0.0,
                 "tyre_deg_rate_s_per_lap": 0.0,
+                "sc_laps_since_last": 50.0,
+                "position": 10.0,
             }
         ]
     )
