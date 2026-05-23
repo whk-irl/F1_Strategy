@@ -377,6 +377,16 @@ def _openf1_client() -> OpenF1Client:
         return client
 
 
+def _client_is_rate_limited(client: OpenF1Client) -> bool:
+    checker = getattr(client, "is_rate_limited", None)
+    return bool(checker()) if callable(checker) else False
+
+
+def _client_is_auth_required(client: OpenF1Client) -> bool:
+    checker = getattr(client, "is_auth_required", None)
+    return bool(checker()) if callable(checker) else False
+
+
 @st.cache_resource(show_spinner="Connecting to S3…")
 def _log_storage_status() -> tuple[bool, str]:
     """Probe S3/MinIO for log storage. Returns (ok, message).
@@ -786,13 +796,13 @@ def _render_live_tab(policy: Any, model_type: str = "ppo", model_key: str = "def
                 )
 
         if session_meta is None:
-            if client.is_auth_required():
+            if _client_is_auth_required(client):
                 st.error(
                     "OpenF1 requires authentication while a live F1 session is in progress. "
                     "Add `PITWALL_OPENF1_API_KEY` or `OPENF1_API_KEY` to Streamlit secrets, "
                     "then reboot the app."
                 )
-            elif client.is_rate_limited():
+            elif _client_is_rate_limited(client):
                 st.info(
                     "⏳ OpenF1 API rate-limited — searching for the next race/sprint session…"
                 )
@@ -838,13 +848,13 @@ def _render_live_tab(policy: Any, model_type: str = "ppo", model_key: str = "def
         return
 
     if not drivers:
-        if client.is_auth_required():
+        if _client_is_auth_required(client):
             st.error(
                 "OpenF1 requires authentication while this live session is in progress. "
                 "Add `PITWALL_OPENF1_API_KEY` or `OPENF1_API_KEY` to Streamlit secrets, "
                 "then reboot the app."
             )
-        elif client.is_rate_limited():
+        elif _client_is_rate_limited(client):
             st.info("⏳ OpenF1 API rate-limited — drivers will load shortly. Retrying automatically…")
         else:
             st.info("No drivers listed for this session yet.")
@@ -1019,9 +1029,9 @@ def _render_live_tab(policy: Any, model_type: str = "ppo", model_key: str = "def
     footer = f"Last updated: {ts}  ·  Session key: {session_key}"
     if log_status_msg:
         footer = f"{footer}  ·  {log_status_msg}"
-    if client.is_rate_limited():
+    if _client_is_rate_limited(client):
         footer = f"{footer}  ·  ⏳ OpenF1 rate-limited — serving cached data"
-    if client.is_auth_required():
+    if _client_is_auth_required(client):
         footer = f"{footer}  ·  OpenF1 auth required for live data"
     st.caption(footer)
 
