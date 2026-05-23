@@ -70,7 +70,14 @@ class OpenF1Client:
             resp = self._session.get(url, params=params, timeout=_SESSION_TIMEOUT)
             resp.raise_for_status()
         except requests.HTTPError as exc:
-            if exc.response is not None and exc.response.status_code == 429:
+            status = exc.response.status_code if exc.response is not None else None
+            if status == 404:
+                # OpenF1 returns 404 (not 200 with []) for queries with no
+                # matching rows — e.g. /laps before a session has started.
+                # Treat as empty data so the live tab keeps auto-refreshing
+                # cleanly instead of flashing a 'Live data fetch failed' warning.
+                return []
+            if status == 429:
                 # Respect Retry-After header if present, else use default backoff.
                 retry_after = exc.response.headers.get("Retry-After")
                 try:
