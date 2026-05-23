@@ -77,6 +77,13 @@ class OpenF1Client:
                 # Treat as empty data so the live tab keeps auto-refreshing
                 # cleanly instead of flashing a 'Live data fetch failed' warning.
                 return []
+            if status == 401:
+                # OpenF1 moved some endpoints (notably /sessions?year=…) to an
+                # authenticated tier in late 2025.  Return an empty list and
+                # enter a long cool-off so we don't hammer the API; the caller
+                # can fall back to a public endpoint.
+                self._rate_limited_until = now + 600.0  # 10 min
+                return []
             if status == 429:
                 # Respect Retry-After header if present, else use default backoff.
                 retry_after = exc.response.headers.get("Retry-After")

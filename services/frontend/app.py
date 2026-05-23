@@ -743,6 +743,25 @@ def _render_live_tab(policy: Any, model_type: str = "ppo", model_key: str = "def
             st.error(f"OpenF1 API error: {exc}")
             return
         session_meta = _pick_relevant_race_session(sessions)
+
+        # Fallback: OpenF1 moved /sessions?year=… behind authentication in late
+        # 2025 (returns 401, treated as empty by _get).  /sessions?session_key=latest
+        # is still public, so we can still show *something* — just without the
+        # race/sprint type filter.
+        if session_meta is None and not sessions:
+            try:
+                latest = client.get_latest_session()
+            except Exception as exc:
+                st.error(f"OpenF1 API error: {exc}")
+                return
+            if latest is not None:
+                session_meta = latest
+                st.caption(
+                    "ℹ️ Race/sprint filter unavailable — OpenF1's `/sessions?year` endpoint "
+                    "now requires authentication.  Showing the latest session of any type. "
+                    "Recommendations on qualifying/practice data are not meaningful."
+                )
+
         if session_meta is None:
             if client.is_rate_limited():
                 st.info(
