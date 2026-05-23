@@ -48,6 +48,8 @@ class OpenF1Client:
             self._session.headers["Authorization"] = f"Bearer {api_key}"
         # Monotonic timestamp until which we should not hit the API again.
         self._rate_limited_until: float = 0.0
+        # Monotonic timestamp until which live unauthenticated access is blocked.
+        self._auth_required_until: float = 0.0
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -56,6 +58,10 @@ class OpenF1Client:
     def is_rate_limited(self) -> bool:
         """Return True if we are currently in a 429 cool-off window."""
         return time.monotonic() < self._rate_limited_until
+
+    def is_auth_required(self) -> bool:
+        """Return True if OpenF1 rejected live access as unauthenticated."""
+        return time.monotonic() < self._auth_required_until
 
     def _get(self, endpoint: str, params: dict[str, Any]) -> list[dict[str, Any]]:
         key = endpoint + str(sorted(params.items()))
@@ -75,6 +81,9 @@ class OpenF1Client:
         if now < self._rate_limited_until:
             return cached[1] if cached is not None else []
 
+        if now < self._auth_required_until:
+            return cached[1] if cached is not None else []
+
         url = f"{_BASE}/{endpoint}"
         try:
             resp = self._session.get(url, params=params, timeout=_SESSION_TIMEOUT)
@@ -88,11 +97,10 @@ class OpenF1Client:
                 # cleanly instead of flashing a 'Live data fetch failed' warning.
                 return []
             if status == 401:
-                # OpenF1 moved some endpoints (notably /sessions?year=…) to an
-                # authenticated tier in late 2025.  Return an empty list and
-                # enter a long cool-off so we don't hammer the API; the caller
-                # can fall back to a public endpoint.
-                self._rate_limited_until = now + 600.0  # 10 min
+                # During live sessions OpenF1 can require authentication for
+                # all endpoints. Return an empty list and enter a cool-off so
+                # Streamlit reruns don't hammer the API.
+                self._auth_required_until = now + 600.0  # 10 min
                 return []
             if status == 429:
                 # Respect Retry-After header if present, else use default backoff.

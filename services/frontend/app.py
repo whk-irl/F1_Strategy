@@ -352,11 +352,20 @@ def _openf1_client() -> OpenF1Client:
     # was triggering 429s during live sessions.  Laps are ~90s long so freshness
     # is fine for strategy decisions.
     #
-    # PITWALL_OPENF1_API_KEY (or the bare OPENF1_API_KEY) unlocks the
-    # authenticated tier, which OpenF1 introduced in late 2025 for endpoints
-    # like /sessions?year=…  Set it as a Streamlit Cloud secret to restore
-    # the race/sprint session filter; without it we fall back gracefully.
+    # PITWALL_OPENF1_API_KEY (or the bare OPENF1_API_KEY) unlocks OpenF1's
+    # authenticated tier. During live sessions OpenF1 can restrict all API
+    # access to authenticated users, so read both environment variables and
+    # Streamlit secrets.
     api_key = os.getenv("PITWALL_OPENF1_API_KEY") or os.getenv("OPENF1_API_KEY")
+    if not api_key:
+        try:
+            api_key = str(
+                st.secrets.get("PITWALL_OPENF1_API_KEY")
+                or st.secrets.get("OPENF1_API_KEY")
+                or ""
+            )
+        except Exception:  # noqa: BLE001
+            api_key = ""
     try:
         return OpenF1Client(ttl=60, api_key=api_key)
     except TypeError as exc:
@@ -772,12 +781,18 @@ def _render_live_tab(policy: Any, model_type: str = "ppo", model_key: str = "def
                 session_meta = latest
                 st.caption(
                     "ℹ️ Race/sprint filter unavailable — OpenF1's `/sessions?year` endpoint "
-                    "now requires authentication.  Showing the latest session of any type. "
+                    "requires authentication.  Showing the latest session of any type. "
                     "Recommendations on qualifying/practice data are not meaningful."
                 )
 
         if session_meta is None:
-            if client.is_rate_limited():
+            if client.is_auth_required():
+                st.error(
+                    "OpenF1 requires authentication while a live F1 session is in progress. "
+                    "Add `PITWALL_OPENF1_API_KEY` or `OPENF1_API_KEY` to Streamlit secrets, "
+                    "then reboot the app."
+                )
+            elif client.is_rate_limited():
                 st.info(
                     "⏳ OpenF1 API rate-limited — searching for the next race/sprint session…"
                 )
@@ -823,7 +838,13 @@ def _render_live_tab(policy: Any, model_type: str = "ppo", model_key: str = "def
         return
 
     if not drivers:
-        if client.is_rate_limited():
+        if client.is_auth_required():
+            st.error(
+                "OpenF1 requires authentication while this live session is in progress. "
+                "Add `PITWALL_OPENF1_API_KEY` or `OPENF1_API_KEY` to Streamlit secrets, "
+                "then reboot the app."
+            )
+        elif client.is_rate_limited():
             st.info("⏳ OpenF1 API rate-limited — drivers will load shortly. Retrying automatically…")
         else:
             st.info("No drivers listed for this session yet.")
@@ -1000,6 +1021,8 @@ def _render_live_tab(policy: Any, model_type: str = "ppo", model_key: str = "def
         footer = f"{footer}  ·  {log_status_msg}"
     if client.is_rate_limited():
         footer = f"{footer}  ·  ⏳ OpenF1 rate-limited — serving cached data"
+    if client.is_auth_required():
+        footer = f"{footer}  ·  OpenF1 auth required for live data"
     st.caption(footer)
 
     if auto_refresh:
