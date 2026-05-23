@@ -356,6 +356,23 @@ def _openf1_client() -> OpenF1Client:
     # authenticated tier. During live sessions OpenF1 can restrict all API
     # access to authenticated users, so read both environment variables and
     # Streamlit secrets.
+    api_key = _openf1_api_key()
+    try:
+        st.session_state["_openf1_has_api_key"] = bool(api_key)
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        return OpenF1Client(ttl=60, api_key=api_key or None)
+    except TypeError as exc:
+        if "api_key" not in str(exc):
+            raise
+        client = OpenF1Client(ttl=60)
+        if api_key and hasattr(client, "_session"):
+            client._session.headers["Authorization"] = f"Bearer {api_key}"  # noqa: SLF001
+        return client
+
+
+def _openf1_api_key() -> str:
     api_key = os.getenv("PITWALL_OPENF1_API_KEY") or os.getenv("OPENF1_API_KEY")
     if not api_key:
         try:
@@ -366,15 +383,7 @@ def _openf1_client() -> OpenF1Client:
             )
         except Exception:  # noqa: BLE001
             api_key = ""
-    try:
-        return OpenF1Client(ttl=60, api_key=api_key)
-    except TypeError as exc:
-        if "api_key" not in str(exc):
-            raise
-        client = OpenF1Client(ttl=60)
-        if api_key and hasattr(client, "_session"):
-            client._session.headers["Authorization"] = f"Bearer {api_key}"  # noqa: SLF001
-        return client
+    return api_key.strip()
 
 
 def _client_is_rate_limited(client: OpenF1Client) -> bool:
@@ -385,6 +394,20 @@ def _client_is_rate_limited(client: OpenF1Client) -> bool:
 def _client_is_auth_required(client: OpenF1Client) -> bool:
     checker = getattr(client, "is_auth_required", None)
     return bool(checker()) if callable(checker) else False
+
+
+def _openf1_key_is_configured() -> bool:
+    if st.session_state.get("_openf1_has_api_key"):
+        return True
+    return bool(_openf1_api_key())
+
+
+def _show_openf1_auth_required() -> None:
+    st.error(
+        "OpenF1 requires authentication while a live F1 session is in progress. "
+        "Add `PITWALL_OPENF1_API_KEY` or `OPENF1_API_KEY` to Streamlit secrets, "
+        "then reboot the app."
+    )
 
 
 @st.cache_resource(show_spinner="Connecting to S3…")
@@ -796,12 +819,8 @@ def _render_live_tab(policy: Any, model_type: str = "ppo", model_key: str = "def
                 )
 
         if session_meta is None:
-            if _client_is_auth_required(client):
-                st.error(
-                    "OpenF1 requires authentication while a live F1 session is in progress. "
-                    "Add `PITWALL_OPENF1_API_KEY` or `OPENF1_API_KEY` to Streamlit secrets, "
-                    "then reboot the app."
-                )
+            if _client_is_auth_required(client) or not _openf1_key_is_configured():
+                _show_openf1_auth_required()
             elif _client_is_rate_limited(client):
                 st.info(
                     "⏳ OpenF1 API rate-limited — searching for the next race/sprint session…"
@@ -848,12 +867,8 @@ def _render_live_tab(policy: Any, model_type: str = "ppo", model_key: str = "def
         return
 
     if not drivers:
-        if _client_is_auth_required(client):
-            st.error(
-                "OpenF1 requires authentication while this live session is in progress. "
-                "Add `PITWALL_OPENF1_API_KEY` or `OPENF1_API_KEY` to Streamlit secrets, "
-                "then reboot the app."
-            )
+        if _client_is_auth_required(client) or not _openf1_key_is_configured():
+            _show_openf1_auth_required()
         elif _client_is_rate_limited(client):
             st.info("⏳ OpenF1 API rate-limited — drivers will load shortly. Retrying automatically…")
         else:
