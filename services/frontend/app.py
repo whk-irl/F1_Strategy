@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 import os
 import time
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, cast
 
@@ -643,6 +644,62 @@ _PIT_LOSS_BY_CIRCUIT: dict[str, float] = {
 }
 
 
+def _is_race_type_session(s: dict[str, Any]) -> bool:
+    """Return True for Race or Sprint sessions; False for qualifying/practice.
+
+    OpenF1's ``session_type`` is "Race" for both feature races and sprints
+    (the distinction is in ``session_name``).  Falls back to ``session_name``
+    when ``session_type`` is missing.
+    """
+    if s.get("session_type") == "Race":
+        return True
+    return s.get("session_name") in ("Race", "Sprint")
+
+
+def _pick_relevant_race_session(sessions: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """Pick the race/sprint session closest in time to *now*.
+
+    Naturally handles: currently-running session (smallest distance), just-finished
+    session (small negative distance), about-to-start session (small positive
+    distance).  Returns None when no race-type session exists in the input.
+    """
+    race_sessions = [s for s in sessions if _is_race_type_session(s)]
+    if not race_sessions:
+        return None
+    now = datetime.now(timezone.utc)
+
+    def _distance(s: dict[str, Any]) -> timedelta:
+        ds = s.get("date_start")
+        if not ds:
+            return timedelta.max
+        try:
+            dt = datetime.fromisoformat(str(ds).replace("Z", "+00:00"))
+        except (ValueError, TypeError):
+            return timedelta.max
+        return abs(dt - now)
+
+    race_sessions.sort(key=_distance)
+    return race_sessions[0]
+
+
+def _format_gp_name(session_meta: dict[str, Any]) -> str:
+    """Build a human-readable GP name with fallbacks.
+
+    OpenF1 sometimes returns sessions without ``meeting_name`` populated.
+    Fall back to ``country_name`` (e.g. "Canada GP") then ``circuit_short_name``.
+    """
+    name = session_meta.get("meeting_name")
+    if name:
+        return str(name)
+    country = session_meta.get("country_name")
+    if country:
+        return f"{country} GP"
+    circuit = session_meta.get("circuit_short_name")
+    if circuit:
+        return f"{circuit} GP"
+    return "Unknown GP"
+
+
 def _render_live_tab(policy: Any, model_type: str = "ppo", model_key: str = "default") -> None:
     """Render the Live Race tab — OpenF1 real-time strategy recommendations."""
     client = _openf1_client()
@@ -674,13 +731,31 @@ def _render_live_tab(policy: Any, model_type: str = "ppo", model_key: str = "def
         )
 
     if use_latest:
+        # Filter to Race/Sprint sessions only — qualifying and practice produce
+        # data shapes (no fixed lap count, no race-pace stints) that the PPO
+        # policy isn't trained on, so the recommendation would be meaningless.
+        year = datetime.now(timezone.utc).year
         try:
-            session_meta = client.get_latest_session()
+            sessions = client.get_sessions(year)
         except Exception as exc:
             st.error(f"OpenF1 API error: {exc}")
             return
+        session_meta = _pick_relevant_race_session(sessions)
         if session_meta is None:
-            st.warning("No session found. OpenF1 may not have data for the current event yet.")
+            if client.is_rate_limited():
+                st.info(
+                    "⏳ OpenF1 API rate-limited — searching for the next race/sprint session…"
+                )
+            else:
+                st.warning(
+                    f"No race or sprint session found for {year} yet. "
+                    "Toggle off 'Track latest session' to enter a specific session key."
+                )
+            if auto_refresh:
+                time.sleep(5)
+                st.rerun()
+            elif st.button("🔄 Retry"):
+                st.rerun()
             return
         session_key = int(session_meta["session_key"])
     else:
@@ -695,7 +770,7 @@ def _render_live_tab(policy: Any, model_type: str = "ppo", model_key: str = "def
         st.error(f"Session {session_key} not found.")
         return
 
-    gp_name = session_meta.get("meeting_name", "Unknown GP")
+    gp_name = _format_gp_name(session_meta)
     session_type = session_meta.get("session_name", "")
     total_laps = int(session_meta.get("total_laps") or 0)
     circuit_name = session_meta.get("circuit_short_name", "")
