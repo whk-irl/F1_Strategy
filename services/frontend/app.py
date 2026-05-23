@@ -55,7 +55,7 @@ except Exception as _e:  # noqa: BLE001
 from stable_baselines3 import PPO
 
 from services.live.obs_builder import DriverLiveState, update_from_openf1
-from services.live.openf1 import OpenF1Client
+from services.live.openf1_api import OpenF1Client
 from services.live.race_log import (
     LOG_PREFIX,
     PredictionRow,
@@ -357,7 +357,15 @@ def _openf1_client() -> OpenF1Client:
     # like /sessions?year=…  Set it as a Streamlit Cloud secret to restore
     # the race/sprint session filter; without it we fall back gracefully.
     api_key = os.getenv("PITWALL_OPENF1_API_KEY") or os.getenv("OPENF1_API_KEY")
-    return OpenF1Client(ttl=60, api_key=api_key)
+    try:
+        return OpenF1Client(ttl=60, api_key=api_key)
+    except TypeError as exc:
+        if "api_key" not in str(exc):
+            raise
+        client = OpenF1Client(ttl=60)
+        if api_key and hasattr(client, "_session"):
+            client._session.headers["Authorization"] = f"Bearer {api_key}"  # noqa: SLF001
+        return client
 
 
 @st.cache_resource(show_spinner="Connecting to S3…")
