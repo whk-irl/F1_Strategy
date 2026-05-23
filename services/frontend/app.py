@@ -2,7 +2,7 @@
 
 Two tabs:
   • Race Replay — 2024 recorded race replayed through the PPO policy.
-  • Live Race   — live lap-by-lap recommendations via the OpenF1 public API.
+  • Live Race   — live lap-by-lap recommendations via F1.com timing or OpenF1.
 
 Run with:
     streamlit run services/frontend/app.py
@@ -54,6 +54,7 @@ except Exception as _e:  # noqa: BLE001
     _SEQ_FEATURE_COLS: list[str] = []
 from stable_baselines3 import PPO
 
+from services.live.f1_signalr import F1LiveTimingClient, resolve_subscription_token
 from services.live.obs_builder import DriverLiveState, update_from_openf1
 from services.live.openf1_api import OpenF1Client
 from services.live.race_log import (
@@ -410,6 +411,48 @@ def _show_openf1_auth_required() -> None:
     )
 
 
+def _default_live_provider() -> str:
+    return os.getenv("PITWALL_LIVE_PROVIDER", "signalr").strip().lower()
+
+
+@st.cache_resource(show_spinner="Connecting to F1 live timing…")
+def _f1_signalr_client() -> F1LiveTimingClient:
+    token = resolve_subscription_token()
+    client = F1LiveTimingClient(subscription_token=token or None)
+    client.ensure_started()
+    return client
+
+
+def _client_is_signalr(client: Any) -> bool:
+    return isinstance(client, F1LiveTimingClient)
+
+
+def _resolve_live_client(provider_choice: str) -> tuple[Any, str]:
+    """Return ``(client, label)`` for the selected live data provider."""
+    choice = provider_choice.strip().lower()
+    if choice == "openf1":
+        return _openf1_client(), "OpenF1"
+
+    # signalr and auto both use the free F1.com feed.  Do not fall back to
+    # OpenF1 on cold start — SignalR needs a few seconds to connect and would
+    # otherwise trigger the OpenF1 auth error on every first load.
+    signalr = _f1_signalr_client()
+    if choice == "auto":
+        return signalr, "F1 Live Timing (auto)"
+    return signalr, "F1 Live Timing"
+
+
+def _show_f1_waiting_hint(client: F1LiveTimingClient) -> None:
+    st.info(
+        "Connected to the free F1.com timing feed — waiting for session data. "
+        "Timing appears when a session is live on "
+        "[formula1.com/en/timing/f1-live](https://www.formula1.com/en/timing/f1-live)."
+    )
+    err = client.last_error()
+    if err:
+        st.caption(f"Last connection error: `{err}`")
+
+
 @st.cache_resource(show_spinner="Connecting to S3…")
 def _log_storage_status() -> tuple[bool, str]:
     """Probe S3/MinIO for log storage. Returns (ok, message).
@@ -759,13 +802,30 @@ def _format_gp_name(session_meta: dict[str, Any]) -> str:
 
 
 def _render_live_tab(policy: Any, model_type: str = "ppo", model_key: str = "default") -> None:
-    """Render the Live Race tab — OpenF1 real-time strategy recommendations."""
-    client = _openf1_client()
+    """Render the Live Race tab — real-time strategy recommendations."""
+    provider_choice = st.selectbox(
+        "Data source",
+        options=["auto", "signalr", "openf1"],
+        format_func=lambda x: {
+            "auto": "Auto (F1.com → OpenF1 fallback)",
+            "signalr": "F1.com live timing",
+            "openf1": "OpenF1 API",
+        }[x],
+        index={"auto": 0, "signalr": 1, "openf1": 2}.get(_default_live_provider(), 0),
+        key="live_provider_choice",
+    )
+    client, provider_label = _resolve_live_client(provider_choice)
+    using_signalr = _client_is_signalr(client)
 
     # ── Session picker ───────────────────────────────────────────────────────
     col_sess, col_refresh, col_log = st.columns([3, 1, 1])
     with col_sess:
-        use_latest = st.checkbox("Track latest session", value=True)
+        use_latest = st.checkbox(
+            "Track latest session",
+            value=True,
+            disabled=using_signalr,
+            help="Always enabled for F1.com timing — session comes from the live feed.",
+        )
     with col_refresh:
         auto_refresh = st.toggle("Auto-refresh (5 s)", value=False)
     s3_ok, s3_msg = _log_storage_status()
@@ -788,38 +848,48 @@ def _render_live_tab(policy: Any, model_type: str = "ppo", model_key: str = "def
             f"in your environment / Streamlit secrets to enable it.  Error: `{s3_msg}`"
         )
 
-    if use_latest:
-        # Filter to Race/Sprint sessions only — qualifying and practice produce
-        # data shapes (no fixed lap count, no race-pace stints) that the PPO
-        # policy isn't trained on, so the recommendation would be meaningless.
+    if use_latest or using_signalr:
         year = datetime.now(timezone.utc).year
-        try:
-            sessions = client.get_sessions(year)
-        except Exception as exc:
-            st.error(f"OpenF1 API error: {exc}")
-            return
-        session_meta = _pick_relevant_race_session(sessions)
-
-        # Fallback: OpenF1 moved /sessions?year=… behind authentication in late
-        # 2025 (returns 401, treated as empty by _get).  /sessions?session_key=latest
-        # is still public, so we can still show *something* — just without the
-        # race/sprint type filter.
-        if session_meta is None and not sessions:
+        if using_signalr:
+            session_meta = client.get_latest_session()
+        else:
+            # Filter to Race/Sprint sessions only — qualifying and practice produce
+            # data shapes (no fixed lap count, no race-pace stints) that the PPO
+            # policy isn't trained on, so the recommendation would be meaningless.
             try:
-                latest = client.get_latest_session()
+                sessions = client.get_sessions(year)
             except Exception as exc:
                 st.error(f"OpenF1 API error: {exc}")
                 return
-            if latest is not None:
-                session_meta = latest
-                st.caption(
-                    "ℹ️ Race/sprint filter unavailable — OpenF1's `/sessions?year` endpoint "
-                    "requires authentication.  Showing the latest session of any type. "
-                    "Recommendations on qualifying/practice data are not meaningful."
-                )
+            session_meta = _pick_relevant_race_session(sessions)
+
+            # Fallback: OpenF1 moved /sessions?year=… behind authentication in late
+            # 2025 (returns 401, treated as empty by _get).  /sessions?session_key=latest
+            # is still public, so we can still show *something* — just without the
+            # race/sprint type filter.
+            if session_meta is None and not sessions:
+                try:
+                    latest = client.get_latest_session()
+                except Exception as exc:
+                    st.error(f"OpenF1 API error: {exc}")
+                    return
+                if latest is not None:
+                    session_meta = latest
+                    st.caption(
+                        "ℹ️ Race/sprint filter unavailable — OpenF1's `/sessions?year` endpoint "
+                        "requires authentication.  Showing the latest session of any type. "
+                        "Recommendations on qualifying/practice data are not meaningful."
+                    )
 
         if session_meta is None:
-            if _client_is_auth_required(client) or not _openf1_key_is_configured():
+            if using_signalr:
+                if client.is_connected():
+                    st.info("⏳ Waiting for session info from F1 live timing…")
+                else:
+                    st.info("⏳ Connecting to F1 live timing feed…")
+                if _client_is_signalr(client) and client.is_auth_required():
+                    _show_f1_waiting_hint(client)
+            elif _client_is_auth_required(client) or not _openf1_key_is_configured():
                 _show_openf1_auth_required()
             elif _client_is_rate_limited(client):
                 st.info(
@@ -867,7 +937,14 @@ def _render_live_tab(policy: Any, model_type: str = "ppo", model_key: str = "def
         return
 
     if not drivers:
-        if _client_is_auth_required(client) or not _openf1_key_is_configured():
+        if using_signalr:
+            if client.is_connected():
+                st.info("⏳ Waiting for driver list from F1 live timing…")
+            else:
+                st.info("⏳ Connecting to F1 live timing feed…")
+            if client.is_auth_required():
+                _show_f1_waiting_hint(client)
+        elif _client_is_auth_required(client) or not _openf1_key_is_configured():
             _show_openf1_auth_required()
         elif _client_is_rate_limited(client):
             st.info("⏳ OpenF1 API rate-limited — drivers will load shortly. Retrying automatically…")
@@ -1041,13 +1118,15 @@ def _render_live_tab(policy: Any, model_type: str = "ppo", model_key: str = "def
 
     # ── Auto-refresh ─────────────────────────────────────────────────────────
     ts = time.strftime("%H:%M:%S")
-    footer = f"Last updated: {ts}  ·  Session key: {session_key}"
+    footer = f"Last updated: {ts}  ·  Source: {provider_label}  ·  Session key: {session_key}"
     if log_status_msg:
         footer = f"{footer}  ·  {log_status_msg}"
-    if _client_is_rate_limited(client):
+    if not using_signalr and _client_is_rate_limited(client):
         footer = f"{footer}  ·  ⏳ OpenF1 rate-limited — serving cached data"
-    if _client_is_auth_required(client):
+    if not using_signalr and _client_is_auth_required(client):
         footer = f"{footer}  ·  OpenF1 auth required for live data"
+    if using_signalr and client.is_connected():
+        footer = f"{footer}  ·  🟢 F1 timing connected"
     st.caption(footer)
 
     if auto_refresh:
@@ -1456,8 +1535,8 @@ def main() -> None:
 
     st.info(
         "**📊 Race Replay** — replay any race from 2022–2025 and see what Pitwall AI would have "
-        "recommended lap-by-lap.  |  **🔴 Live Race** — real-time recommendations via the OpenF1 "
-        "API during a race weekend.  |  **📜 Prediction Log** — browse persisted lap-by-lap "
+        "recommended lap-by-lap.  |  **🔴 Live Race** — real-time recommendations via the free "
+        "F1.com live timing feed during a race weekend.  |  **📜 Prediction Log** — browse persisted lap-by-lap "
         "recommendations captured during live sessions.",
         icon="ℹ️",
     )

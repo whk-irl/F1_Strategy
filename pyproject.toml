@@ -158,6 +158,7 @@ omit = [
     "services/frontend/*",
     "services/api/*",
     "services/live/openf1_api.py",  # thin HTTP wrapper; tested via integration tests
+    "services/live/f1_signalr.py",  # SignalR thread; state parsing tested in timing_state
     "services/ingestion/fastf1_client.py",
     "services/ingestion/pipeline.py",
     "ml/features/*",

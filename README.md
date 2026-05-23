@@ -19,7 +19,7 @@ Given the current race state, Pitwall AI recommends:
 Two modes:
 
 - **Race Replay** — step through any 2022–2025 race lap by lap. The red line shows where the driver would have finished under Pitwall AI's strategy; the grey line shows what the team actually did.
-- **Live Race** — connects to the [OpenF1 public API](https://openf1.org/) during a race weekend and streams real-time recommendations.
+- **Live Race** — connects to the [F1.com live timing feed](https://www.formula1.com/en/timing/f1-live) (SignalR) with [OpenF1](https://openf1.org/) fallback during race weekends.
 
 ---
 
