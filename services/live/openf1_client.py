@@ -2,7 +2,12 @@
 
 All methods return plain Python dicts/lists so callers don't depend on any
 OpenF1-specific types.  Responses are cached in memory for ``ttl`` seconds
-(default 25 s) to avoid hammering the API on Streamlit reruns.
+to avoid hammering the API on Streamlit reruns.
+
+The client also handles HTTP 429 (rate-limited) responses by serving the
+stale cached value if one exists and entering a global cool-off window so
+follow-up calls don't re-hit the API.  This is critical during live races
+where the Streamlit live tab makes ~7 endpoint calls per refresh tick.
 
 API base: https://api.openf1.org/v1/
 Docs: https://openf1.org/
@@ -17,6 +22,7 @@ import requests
 
 _BASE = "https://api.openf1.org/v1"
 _SESSION_TIMEOUT = 10  # HTTP request timeout (seconds)
+_RATE_LIMIT_BACKOFF_S = 30.0  # cool-off window after a 429
 
 
 class OpenF1Client:
@@ -24,27 +30,61 @@ class OpenF1Client:
 
     Args:
         ttl: Cache TTL in seconds.  Responses older than this are refetched.
+            Default 60s — laps are ~90s long during a sprint/race so a 60s
+            TTL is fresh enough for strategy decisions while halving the
+            request rate compared to the previous 25s default.
     """
 
-    def __init__(self, ttl: int = 25) -> None:
+    def __init__(self, ttl: int = 60) -> None:
         self._ttl = ttl
         self._cache: dict[str, tuple[float, list[dict[str, Any]]]] = {}
         self._session = requests.Session()
+        # Monotonic timestamp until which we should not hit the API again.
+        self._rate_limited_until: float = 0.0
 
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
 
+    def is_rate_limited(self) -> bool:
+        """Return True if we are currently in a 429 cool-off window."""
+        return time.monotonic() < self._rate_limited_until
+
     def _get(self, endpoint: str, params: dict[str, Any]) -> list[dict[str, Any]]:
         key = endpoint + str(sorted(params.items()))
         now = time.monotonic()
-        if key in self._cache:
-            ts, data = self._cache[key]
+
+        cached = self._cache.get(key)
+        if cached is not None:
+            ts, data = cached
             if now - ts < self._ttl:
                 return data
+
+        # If we're still in a 429 cool-off, serve the (possibly stale) cache
+        # rather than hammering the API and getting blocked further.
+        if now < self._rate_limited_until and cached is not None:
+            return cached[1]
+
         url = f"{_BASE}/{endpoint}"
-        resp = self._session.get(url, params=params, timeout=_SESSION_TIMEOUT)
-        resp.raise_for_status()
+        try:
+            resp = self._session.get(url, params=params, timeout=_SESSION_TIMEOUT)
+            resp.raise_for_status()
+        except requests.HTTPError as exc:
+            if exc.response is not None and exc.response.status_code == 429:
+                # Respect Retry-After header if present, else use default backoff.
+                retry_after = exc.response.headers.get("Retry-After")
+                try:
+                    backoff = float(retry_after) if retry_after else _RATE_LIMIT_BACKOFF_S
+                except ValueError:
+                    backoff = _RATE_LIMIT_BACKOFF_S
+                self._rate_limited_until = now + backoff
+                if cached is not None:
+                    # Refresh the cache timestamp so we don't immediately re-try
+                    # the next call within the cool-off window.
+                    self._cache[key] = (now, cached[1])
+                    return cached[1]
+            raise
+
         data = cast(list[dict[str, Any]], resp.json())
         self._cache[key] = (now, data)
         return data

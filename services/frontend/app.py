@@ -56,8 +56,10 @@ from stable_baselines3 import PPO
 from services.live.obs_builder import DriverLiveState, update_from_openf1
 from services.live.openf1_client import OpenF1Client
 from services.live.prediction_log import (
+    LOG_PREFIX,
     PredictionRow,
     append_prediction,
+    get_storage,
     list_logs,
     load_log,
 )
@@ -343,7 +345,26 @@ def _get_seq_tire_model(model_type: str) -> tuple[Any, Any] | None:
 
 @st.cache_resource(show_spinner=False)
 def _openf1_client() -> OpenF1Client:
-    return OpenF1Client(ttl=25)
+    # 60s TTL halves the API request rate vs. the original 25s default, which
+    # was triggering 429s during live sessions.  Laps are ~90s long so freshness
+    # is fine for strategy decisions.
+    return OpenF1Client(ttl=60)
+
+
+@st.cache_resource(show_spinner="Connecting to S3…")
+def _log_storage_status() -> tuple[bool, str]:
+    """Probe S3/MinIO for log storage. Returns (ok, message).
+
+    Cached so we don't re-probe on every Streamlit rerun.  Returns ``(True, bucket)``
+    if the storage backend was reachable at startup; ``(False, error_message)``
+    otherwise.  When unreachable, the Live tab disables the log toggle and the
+    Prediction Log tab shows a setup hint.
+    """
+    try:
+        storage = get_storage()
+        return True, storage._bucket  # noqa: SLF001 — internal field used only for the status caption
+    except Exception as exc:  # noqa: BLE001
+        return False, str(exc)
 
 
 # ---------------------------------------------------------------------------
@@ -632,11 +653,24 @@ def _render_live_tab(policy: Any, model_type: str = "ppo", model_key: str = "def
         use_latest = st.checkbox("Track latest session", value=True)
     with col_refresh:
         auto_refresh = st.toggle("Auto-refresh (30 s)", value=False)
+    s3_ok, s3_msg = _log_storage_status()
     with col_log:
         log_enabled = st.toggle(
-            "Log to disk",
-            value=True,
-            help="Persist one row per lap to data/live_logs/. Browse them in the Prediction Log tab.",
+            "Log to S3",
+            value=s3_ok,
+            disabled=not s3_ok,
+            help=(
+                f"Persist one row per lap to s3://{s3_msg}/{LOG_PREFIX}/. "
+                "Browse them in the Prediction Log tab."
+                if s3_ok
+                else f"S3 unreachable — logging disabled. {s3_msg}"
+            ),
+        )
+    if not s3_ok:
+        st.warning(
+            f"⚠️ S3 storage unreachable, prediction logging is disabled.  "
+            f"Set `PITWALL_STORAGE_BACKEND=s3`, `PITWALL_AWS_S3_BUCKET`, and AWS credentials "
+            f"in your environment / Streamlit secrets to enable it.  Error: `{s3_msg}`"
         )
 
     if use_latest:
@@ -840,6 +874,8 @@ def _render_live_tab(policy: Any, model_type: str = "ppo", model_key: str = "def
     footer = f"Last updated: {ts}  ·  Session key: {session_key}"
     if log_status_msg:
         footer = f"{footer}  ·  {log_status_msg}"
+    if client.is_rate_limited():
+        footer = f"{footer}  ·  ⏳ OpenF1 rate-limited — serving cached data"
     st.caption(footer)
 
     if auto_refresh:
@@ -984,15 +1020,25 @@ def _tire_forecast_chart(
 def _render_log_tab() -> None:
     """Render the Prediction Log tab — browse persisted live-race logs."""
     st.markdown("### 📜 Online Prediction Log")
+
+    s3_ok, s3_msg = _log_storage_status()
+    if not s3_ok:
+        st.error(
+            f"⚠️ S3 storage unreachable, can't list logs.  "
+            f"Set `PITWALL_STORAGE_BACKEND=s3`, `PITWALL_AWS_S3_BUCKET`, and AWS credentials "
+            f"in your environment / Streamlit secrets.  Error: `{s3_msg}`"
+        )
+        return
+
     st.caption(
-        "Every lap captured by the **Live Race** tab is appended to a parquet file under "
-        "`data/live_logs/`.  Pick a session below to inspect the timeline."
+        f"Every lap captured by the **Live Race** tab is appended to a parquet object under "
+        f"`s3://{s3_msg}/{LOG_PREFIX}/`.  Pick a session below to inspect the timeline."
     )
 
     logs = list_logs()
     if not logs:
         st.info(
-            "No logs yet.  Open the **🔴 Live Race** tab during a session (with **Log to disk** "
+            "No logs yet.  Open the **🔴 Live Race** tab during a session (with **Log to S3** "
             "enabled) and the lap-by-lap recommendations will be captured here."
         )
         return

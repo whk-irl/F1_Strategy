@@ -1,9 +1,10 @@
 """Persistent log of live-race strategy predictions.
 
 Each call to :func:`append_prediction` writes one row capturing the model's
-recommendation for a single lap.  Logs are stored as Parquet files under
-``data/live_logs/{session_key}_{driver_number}.parquet`` so a portfolio
-retrospective can replay exactly what the model called in real time.
+recommendation for a single lap.  Logs are stored as Parquet objects in S3
+under the ``live_logs/`` prefix of ``PITWALL_AWS_S3_BUCKET`` (or the MinIO
+bucket when ``PITWALL_STORAGE_BACKEND=minio``) so a portfolio retrospective
+can replay exactly what the model called in real time.
 
 Append-on-lap-change is enforced by the caller (Streamlit tab) — this module
 just persists whatever it's handed.
@@ -11,16 +12,20 @@ just persists whatever it's handed.
 
 from __future__ import annotations
 
-import os
+import io
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any
 
 import numpy as np
 import pandas as pd
 
+from services.ingestion.config import IngestionSettings
+from services.ingestion.storage import ObjectStorage
 from services.live.obs_builder import DriverLiveState
+
+# S3 key prefix for live prediction logs.
+LOG_PREFIX = "live_logs"
 
 # Columns persisted to parquet, in stable order.
 _BASE_COLS: list[str] = [
@@ -60,17 +65,35 @@ _OBS_COLS: list[str] = [f"obs_{i:02d}" for i in range(21)]
 LOG_COLS: list[str] = _BASE_COLS + _OBS_COLS
 
 
-def _logs_dir() -> Path:
-    """Return the live-logs directory, honouring ``PITWALL_LIVE_LOG_DIR`` env."""
-    override = os.getenv("PITWALL_LIVE_LOG_DIR")
-    if override:
-        return Path(override)
-    return Path(__file__).resolve().parents[2] / "data" / "live_logs"
+# Module-level singleton — created lazily so import never fails when S3 is
+# unconfigured.  Streamlit caches this at the call site via @st.cache_resource.
+_storage: ObjectStorage | None = None
 
 
-def log_path(session_key: int, driver_number: int) -> Path:
-    """Return the parquet path for a (session, driver) log file."""
-    return _logs_dir() / f"{int(session_key)}_{int(driver_number)}.parquet"
+def get_storage() -> ObjectStorage:
+    """Return a configured ObjectStorage instance.  Constructed on first use.
+
+    Raises:
+        RuntimeError: If the storage backend can't be initialised (missing
+            bucket, bad credentials, network).  Callers should surface this
+            to the UI so the user knows logging is disabled for the session.
+    """
+    global _storage
+    if _storage is None:
+        settings = IngestionSettings()
+        _storage = ObjectStorage(settings)
+    return _storage
+
+
+def reset_storage() -> None:
+    """Clear the cached storage client (used by tests)."""
+    global _storage
+    _storage = None
+
+
+def log_key(session_key: int, driver_number: int) -> str:
+    """Return the S3 object key for a (session, driver) log file."""
+    return f"{LOG_PREFIX}/{int(session_key)}_{int(driver_number)}.parquet"
 
 
 @dataclass
@@ -136,51 +159,51 @@ class PredictionRow:
         return row
 
 
-def append_prediction(row: PredictionRow) -> Path:
-    """Append one prediction row to the appropriate parquet file.
+def append_prediction(row: PredictionRow) -> str:
+    """Append one prediction row to the S3 log object.
 
-    Re-reads the existing file (if any), concatenates, and re-writes — fine for
-    the once-per-lap cadence we run at.  Returns the file path.
+    Read-modify-write: parquet doesn't support cheap appends, so we pull the
+    existing object (if any), concatenate, and re-upload.  Fine for
+    once-per-lap cadence.  Returns the S3 key.
     """
-    path = log_path(row.session_key, row.driver_number)
-    path.parent.mkdir(parents=True, exist_ok=True)
-
+    storage = get_storage()
+    key = log_key(row.session_key, row.driver_number)
     new_df = pd.DataFrame([row.to_dict()], columns=LOG_COLS)
 
-    if path.exists():
-        existing = pd.read_parquet(path)
+    try:
+        existing = storage.read_parquet(key)
         for col in LOG_COLS:
             if col not in existing.columns:
                 existing[col] = pd.NA
         combined = pd.concat([existing[LOG_COLS], new_df], ignore_index=True)
-    else:
+    except KeyError:
         combined = new_df
 
-    combined.to_parquet(path, index=False)
-    return path
+    storage.write_parquet(combined, key)
+    return key
 
 
 def load_log(session_key: int, driver_number: int) -> pd.DataFrame:
-    """Load a single (session, driver) log.  Returns empty DataFrame if missing."""
-    path = log_path(session_key, driver_number)
-    if not path.exists():
+    """Load a single (session, driver) log from S3.  Empty DataFrame if missing."""
+    storage = get_storage()
+    key = log_key(session_key, driver_number)
+    try:
+        return storage.read_parquet(key)
+    except KeyError:
         return pd.DataFrame(columns=LOG_COLS)
-    return pd.read_parquet(path)
 
 
 def list_logs() -> list[dict[str, Any]]:
-    """Return a summary of all logs on disk.
+    """Return a summary of all log objects in S3 under :data:`LOG_PREFIX`.
 
     Each entry has: session_key, driver_number, rows, first_lap, last_lap,
-    last_updated, gp_name, session_name, path.  Sorted newest first.
+    last_updated, gp_name, session_name, driver_label, key.  Sorted newest first.
     """
+    storage = get_storage()
     out: list[dict[str, Any]] = []
-    base = _logs_dir()
-    if not base.exists():
-        return out
-    for path in base.glob("*.parquet"):
+    for key in storage.list_keys(f"{LOG_PREFIX}/"):
         try:
-            df = pd.read_parquet(path)
+            df = storage.read_parquet(key)
         except Exception:  # noqa: BLE001 — skip corrupt files rather than crash the tab
             continue
         if df.empty:
@@ -197,7 +220,7 @@ def list_logs() -> list[dict[str, Any]]:
                 "first_lap": int(df["lap"].min()) if "lap" in df.columns else 0,
                 "last_lap": int(df["lap"].max()) if "lap" in df.columns else 0,
                 "last_updated": str(last.get("timestamp_utc", "")),
-                "path": str(path),
+                "key": key,
             }
         )
     out.sort(key=lambda r: r["last_updated"], reverse=True)

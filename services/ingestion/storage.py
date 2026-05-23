@@ -113,6 +113,17 @@ class ObjectStorage:
                 return False
             raise
 
+    def list_keys(self, prefix: str) -> list[str]:
+        """Return all object keys under *prefix* (paginated)."""
+        keys: list[str] = []
+        paginator = self._client.get_paginator("list_objects_v2")
+        for page in paginator.paginate(Bucket=self._bucket, Prefix=prefix):
+            for obj in page.get("Contents", []) or []:
+                key = obj.get("Key")
+                if key:
+                    keys.append(key)
+        return keys
+
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
