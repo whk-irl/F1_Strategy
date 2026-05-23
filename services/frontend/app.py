@@ -61,8 +61,10 @@ from services.live.live_log import (
     PredictionRow,
     append_prediction,
     get_storage,
-    list_logs,
-    load_log,
+    list_races,
+    load_race,
+    race_folder_name,
+    race_year,
 )
 from services.simulator.env import F1RaceEnv
 
@@ -883,6 +885,8 @@ def _render_live_tab(policy: Any, model_type: str = "ppo", model_key: str = "def
         last_logged_key = f"last_logged_lap_{session_key}_{driver_number}"
         last_logged = st.session_state.get(last_logged_key, 0)
         if live_state.current_lap > last_logged:
+            log_year = race_year(session_meta)
+            log_race = race_folder_name(session_meta)
             try:
                 append_prediction(
                     PredictionRow(
@@ -900,10 +904,12 @@ def _render_live_tab(policy: Any, model_type: str = "ppo", model_key: str = "def
                         recommended_label=str(label),
                         probs=probs,
                         q_values=qv,
-                    )
+                    ),
+                    year=log_year,
+                    race_folder=log_race,
                 )
                 st.session_state[last_logged_key] = live_state.current_lap
-                log_status_msg = f"📝 Logged lap {live_state.current_lap}"
+                log_status_msg = f"📝 Logged lap {live_state.current_lap} → {log_year}/{log_race}"
             except Exception as exc:  # noqa: BLE001
                 log_status_msg = f"⚠️ Log write failed: {exc}"
 
@@ -1105,7 +1111,7 @@ def _tire_forecast_chart(
 
 
 def _render_log_tab() -> None:
-    """Render the Prediction Log tab — browse persisted live-race logs."""
+    """Render the Prediction Log tab — browse persisted race logs by year/race."""
     st.markdown("### 📜 Online Prediction Log")
 
     s3_ok, s3_msg = _log_storage_status()
@@ -1118,76 +1124,112 @@ def _render_log_tab() -> None:
         return
 
     st.caption(
-        f"Every lap captured by the **Live Race** tab is appended to a parquet object under "
-        f"`s3://{s3_msg}/{LOG_PREFIX}/`.  Pick a session below to inspect the timeline."
+        f"Persisted lap-by-lap predictions live under "
+        f"`s3://{s3_msg}/{LOG_PREFIX}/<year>/<race>/<driver>.parquet`.  "
+        "Pick a race below to inspect every driver Pitwall AI watched during it."
     )
 
-    logs = list_logs()
-    if not logs:
+    races = list_races()
+    if not races:
         st.info(
             "No logs yet.  Open the **🔴 Live Race** tab during a session (with **Log to S3** "
             "enabled) and the lap-by-lap recommendations will be captured here."
         )
         return
 
-    log_options = {
-        (
-            f"{r['gp_name']} — {r['session_name']}  ·  "
-            f"{r['driver_label'] or f'#{r['driver_number']}'}  ·  "
-            f"{r['rows']} laps  ({r['last_updated']})"
-        ): (r["session_key"], r["driver_number"])
-        for r in logs
+    # ── Year / race pickers ──────────────────────────────────────────────────
+    years = sorted({r["year"] for r in races}, reverse=True)
+    col_year, col_race = st.columns([1, 3])
+    with col_year:
+        selected_year = st.selectbox("Year", years, key="log_year")
+    year_races = [r for r in races if r["year"] == selected_year]
+    race_options = {
+        f"{r['race_folder']}  ·  {r['n_drivers']} driver(s)": r["race_folder"]
+        for r in year_races
     }
-    chosen = st.selectbox("Session log", list(log_options.keys()))
-    session_key, driver_number = log_options[chosen]
+    with col_race:
+        selected_race_label = st.selectbox("Race", list(race_options.keys()), key="log_race")
+    selected_race = race_options[selected_race_label]
 
-    df = load_log(session_key, driver_number)
+    df = load_race(selected_year, selected_race)
     if df.empty:
-        st.warning("Log file exists but contains no rows.")
+        st.warning("Race folder exists in S3 but no rows could be loaded.")
         return
 
-    # ── Summary metrics ──────────────────────────────────────────────────────
-    last = df.iloc[-1]
-    m1, m2, m3, m4 = st.columns(4)
-    m1.metric("Laps logged", len(df))
-    m2.metric("Lap range", f"{int(df['lap'].min())}–{int(df['lap'].max())}")
-    m3.metric("Pit recs",  int((df["recommended_action"] > 0).sum()))
-    m4.metric("Model", f"{last.get('model_key', '?')} ({last.get('model_type', '?')})")
+    # ── Summary metrics across the whole race ────────────────────────────────
+    n_drivers = int(df["driver_number"].nunique())
+    n_rows = int(len(df))
+    n_laps_max = int(df["lap"].max()) if not df.empty else 0
+    n_pits = int((df["recommended_action"] > 0).sum())
+    last_row = df.sort_values("timestamp_utc").iloc[-1]
+    m1, m2, m3, m4, m5 = st.columns(5)
+    m1.metric("Drivers", n_drivers)
+    m2.metric("Total laps logged", n_rows)
+    m3.metric("Max lap", n_laps_max)
+    m4.metric("Pit recs", n_pits)
+    m5.metric("Model", f"{last_row.get('model_key', '?')} ({last_row.get('model_type', '?')})")
 
-    # ── Timeline chart ───────────────────────────────────────────────────────
-    fig = go.Figure()
-    fig.add_trace(
-        go.Scatter(
-            x=df["lap"],
-            y=df["position"],
-            mode="lines+markers",
-            name="Position",
-            line={"color": "#E8002D", "width": 2},
-            marker={"size": 5},
-        )
+    # ── Driver filter ────────────────────────────────────────────────────────
+    driver_labels = (
+        df.sort_values("driver_number")
+        .groupby("driver_number")["driver_label"]
+        .last()
+        .to_dict()
     )
-    pit_recs = df[df["recommended_action"] > 0]
-    if not pit_recs.empty:
+    driver_choices = ["All drivers"] + [
+        f"#{num}  {label}" for num, label in driver_labels.items()
+    ]
+    selected_driver_label = st.selectbox("Driver filter", driver_choices, key="log_driver")
+    if selected_driver_label == "All drivers":
+        view_df = df
+    else:
+        picked_num = int(selected_driver_label.split()[0].lstrip("#"))
+        view_df = df[df["driver_number"] == picked_num]
+
+    # ── Position chart: one line per driver in the view ──────────────────────
+    fig = go.Figure()
+    palette = [
+        "#E8002D", "#1E5BC6", "#27F4D2", "#FF8000", "#52E252", "#FFD700",
+        "#3671C6", "#B6BABD", "#6692FF", "#229971", "#37BEDD", "#F58020",
+        "#358C75", "#A6051A", "#B6BABD", "#27F4D2", "#5E8FAA", "#52E252",
+        "#FF8000", "#229971",
+    ]
+    for idx, (num, group) in enumerate(view_df.sort_values("lap").groupby("driver_number")):
+        label = driver_labels.get(num, f"#{num}")
+        color = palette[idx % len(palette)]
         fig.add_trace(
             go.Scatter(
-                x=pit_recs["lap"],
-                y=pit_recs["position"],
-                mode="markers",
-                name="Pitwall AI: pit",
-                marker={"symbol": "triangle-down", "size": 12, "color": "#FFD700"},
+                x=group["lap"],
+                y=group["position"],
+                mode="lines+markers",
+                name=str(label),
+                line={"color": color, "width": 2},
+                marker={"size": 4},
             )
         )
-    sc_laps = df[df["sc_active"]]
-    for lap in sc_laps["lap"].tolist():
+        pit_recs = group[group["recommended_action"] > 0]
+        if not pit_recs.empty:
+            fig.add_trace(
+                go.Scatter(
+                    x=pit_recs["lap"],
+                    y=pit_recs["position"],
+                    mode="markers",
+                    name=f"{label} · pit rec",
+                    marker={"symbol": "triangle-down", "size": 10, "color": color},
+                    showlegend=False,
+                )
+            )
+    sc_laps = view_df[view_df["sc_active"]]["lap"].unique().tolist()
+    for lap in sc_laps:
         fig.add_vrect(
-            x0=lap - 0.5, x1=lap + 0.5, fillcolor="yellow", opacity=0.15, line_width=0
+            x0=lap - 0.5, x1=lap + 0.5, fillcolor="yellow", opacity=0.10, line_width=0
         )
     fig.update_layout(
         yaxis={"autorange": "reversed", "title": "Position", "dtick": 1},
         xaxis={"title": "Lap"},
         legend={"orientation": "h", "yanchor": "bottom", "y": 1.02, "xanchor": "right", "x": 1},
         margin={"l": 40, "r": 20, "t": 10, "b": 40},
-        height=320,
+        height=380,
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(20,20,30,1)",
         font={"color": "#FFFFFF"},
@@ -1195,11 +1237,14 @@ def _render_log_tab() -> None:
         xaxis_gridcolor="#333",
     )
     st.plotly_chart(fig, use_container_width=True)
-    st.caption("🟡 Yellow bands = SC/VSC active when prediction was made  ·  ▼ = pit recommendation")
+    st.caption(
+        "🟡 Yellow bands = SC/VSC active when prediction was made  ·  ▼ = pit recommendation per driver"
+    )
 
     # ── Full log table + download ────────────────────────────────────────────
     view_cols = [
         "timestamp_utc",
+        "driver_label",
         "lap",
         "position",
         "compound_name",
@@ -1213,17 +1258,17 @@ def _render_log_tab() -> None:
         "prob_medium",
         "prob_hard",
     ]
-    table = df[view_cols].copy()
+    table = view_df[view_cols].sort_values(["driver_label", "lap"]).copy()
     for col in ("prob_stay", "prob_soft", "prob_medium", "prob_hard"):
         table[col] = table[col].apply(lambda x: f"{x:.1%}")
     table["wet_fraction"] = table["wet_fraction"].apply(lambda x: f"{x:.0%}")
     st.dataframe(table, use_container_width=True, hide_index=True)
 
-    csv_bytes = df.to_csv(index=False).encode("utf-8")
+    csv_bytes = view_df.to_csv(index=False).encode("utf-8")
     st.download_button(
-        "⬇ Download full log (CSV)",
+        f"⬇ Download {selected_year}/{selected_race} (CSV)",
         data=csv_bytes,
-        file_name=f"pitwall_log_{session_key}_{driver_number}.csv",
+        file_name=f"pitwall_log_{selected_year}_{selected_race}.csv",
         mime="text/csv",
     )
 

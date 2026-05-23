@@ -2,9 +2,12 @@
 
 Each call to :func:`append_prediction` writes one row capturing the model's
 recommendation for a single lap.  Logs are stored as Parquet objects in S3
-under the ``live_logs/`` prefix of ``PITWALL_AWS_S3_BUCKET`` (or the MinIO
-bucket when ``PITWALL_STORAGE_BACKEND=minio``) so a portfolio retrospective
-can replay exactly what the model called in real time.
+under ``prediction_log/{year}/{race_folder}/{driver_number}.parquet`` (e.g.
+``prediction_log/2026/Canada_Sprint/1.parquet``).
+
+The race folder name is derived from OpenF1 session metadata so all drivers
+for a given race end up in the same folder, which makes "show the whole race"
+a simple S3 prefix listing.
 
 Append-on-lap-change is enforced by the caller (Streamlit tab) — this module
 just persists whatever it's handed.
@@ -24,23 +27,24 @@ from services.ingestion.storage import ObjectStorage
 from services.live.obs_builder import DriverLiveState
 
 # Explicit __all__ forces Streamlit Cloud to invalidate its module file cache
-# when these symbols change.  Without it, freshly-added names like LOG_PREFIX
-# may not be visible until the app is fully redeployed (see commit 817b795
-# for the same workaround applied to the sequence-tire prediction module).
+# when these symbols change (see commit 817b795 / dff6fe2 for the cache
+# workarounds applied elsewhere in this repo).
 __all__ = [
     "LOG_COLS",
     "LOG_PREFIX",
     "PredictionRow",
     "append_prediction",
     "get_storage",
-    "list_logs",
-    "load_log",
+    "list_races",
+    "load_race",
     "log_key",
+    "race_folder_name",
+    "race_year",
     "reset_storage",
 ]
 
 # S3 key prefix for live prediction logs.
-LOG_PREFIX = "live_logs"
+LOG_PREFIX = "prediction_log"
 
 # Columns persisted to parquet, in stable order.
 _BASE_COLS: list[str] = [
@@ -106,9 +110,45 @@ def reset_storage() -> None:
     _storage = None
 
 
-def log_key(session_key: int, driver_number: int) -> str:
-    """Return the S3 object key for a (session, driver) log file."""
-    return f"{LOG_PREFIX}/{int(session_key)}_{int(driver_number)}.parquet"
+def race_folder_name(session_meta: dict[str, Any]) -> str:
+    """Derive a stable folder name from OpenF1 session metadata.
+
+    Prefers ``country_name`` over ``circuit_short_name`` so a Canada round
+    becomes ``Canada_Sprint`` rather than ``Montreal_Sprint``.  Combined with
+    ``session_name`` to disambiguate Sprint vs Race for the same weekend.
+
+    Examples:
+        ``{"country_name": "Canada", "session_name": "Sprint"}`` → ``Canada_Sprint``
+        ``{"circuit_short_name": "Suzuka", "session_name": "Race"}`` → ``Suzuka_Race``
+    """
+    country = session_meta.get("country_name")
+    circuit = session_meta.get("circuit_short_name")
+    session = session_meta.get("session_name", "Session")
+    primary = country or circuit or "Unknown"
+    folder = f"{primary}_{session}".replace(" ", "_")
+    return folder.strip("_") or "Unknown_Session"
+
+
+def race_year(session_meta: dict[str, Any]) -> int:
+    """Derive the year from session_meta (year field or date_start ISO prefix)."""
+    y = session_meta.get("year")
+    if y:
+        try:
+            return int(y)
+        except (TypeError, ValueError):
+            pass
+    ds = session_meta.get("date_start")
+    if ds:
+        try:
+            return int(str(ds)[:4])
+        except (ValueError, TypeError):
+            pass
+    return datetime.now(timezone.utc).year
+
+
+def log_key(year: int, race_folder: str, driver_number: int) -> str:
+    """Return the S3 object key for a (year, race, driver) log file."""
+    return f"{LOG_PREFIX}/{int(year)}/{race_folder}/{int(driver_number)}.parquet"
 
 
 @dataclass
@@ -174,15 +214,21 @@ class PredictionRow:
         return row
 
 
-def append_prediction(row: PredictionRow) -> str:
-    """Append one prediction row to the S3 log object.
+def append_prediction(row: PredictionRow, year: int, race_folder: str) -> str:
+    """Append one prediction row to the appropriate S3 log object.
 
     Read-modify-write: parquet doesn't support cheap appends, so we pull the
-    existing object (if any), concatenate, and re-upload.  Fine for
-    once-per-lap cadence.  Returns the S3 key.
+    existing object (if any), concatenate, and re-upload.  Fine for the
+    once-per-lap cadence.  Returns the S3 key written.
+
+    Args:
+        row: The prediction to persist.
+        year: 4-digit year used in the S3 path.
+        race_folder: Folder slug (e.g. ``"Canada_Sprint"``) — typically from
+            :func:`race_folder_name`.
     """
     storage = get_storage()
-    key = log_key(row.session_key, row.driver_number)
+    key = log_key(year, race_folder, row.driver_number)
     new_df = pd.DataFrame([row.to_dict()], columns=LOG_COLS)
 
     try:
@@ -198,45 +244,53 @@ def append_prediction(row: PredictionRow) -> str:
     return key
 
 
-def load_log(session_key: int, driver_number: int) -> pd.DataFrame:
-    """Load a single (session, driver) log from S3.  Empty DataFrame if missing."""
-    storage = get_storage()
-    key = log_key(session_key, driver_number)
-    try:
-        return storage.read_parquet(key)
-    except KeyError:
-        return pd.DataFrame(columns=LOG_COLS)
+def list_races() -> list[dict[str, Any]]:
+    """Return one entry per (year, race_folder) under :data:`LOG_PREFIX`.
 
-
-def list_logs() -> list[dict[str, Any]]:
-    """Return a summary of all log objects in S3 under :data:`LOG_PREFIX`.
-
-    Each entry has: session_key, driver_number, rows, first_lap, last_lap,
-    last_updated, gp_name, session_name, driver_label, key.  Sorted newest first.
+    Each entry has: ``year`` (int), ``race_folder`` (str), ``n_drivers`` (int),
+    ``keys`` (list of S3 keys for the drivers in this race).  Sorted newest
+    year first, then race name.
     """
     storage = get_storage()
-    out: list[dict[str, Any]] = []
+    by_race: dict[tuple[int, str], dict[str, Any]] = {}
     for key in storage.list_keys(f"{LOG_PREFIX}/"):
+        # Expected layout: prediction_log/{year}/{race_folder}/{driver}.parquet
+        parts = key.split("/")
+        if len(parts) < 4 or parts[0] != LOG_PREFIX:
+            continue
         try:
-            df = storage.read_parquet(key)
+            year_int = int(parts[1])
+        except (ValueError, TypeError):
+            continue
+        race = parts[2]
+        entry = by_race.setdefault(
+            (year_int, race),
+            {"year": year_int, "race_folder": race, "n_drivers": 0, "keys": []},
+        )
+        entry["n_drivers"] += 1
+        entry["keys"].append(key)
+    return sorted(
+        by_race.values(),
+        key=lambda r: (r["year"], r["race_folder"]),
+        reverse=True,
+    )
+
+
+def load_race(year: int, race_folder: str) -> pd.DataFrame:
+    """Load and concatenate every driver's log for a given (year, race_folder).
+
+    Returns an empty DataFrame (with the right columns) if the folder is
+    missing or all files are unreadable.
+    """
+    storage = get_storage()
+    prefix = f"{LOG_PREFIX}/{int(year)}/{race_folder}/"
+    keys = storage.list_keys(prefix)
+    dfs: list[pd.DataFrame] = []
+    for key in keys:
+        try:
+            dfs.append(storage.read_parquet(key))
         except Exception:  # noqa: BLE001 — skip corrupt files rather than crash the tab
             continue
-        if df.empty:
-            continue
-        last = df.iloc[-1]
-        out.append(
-            {
-                "session_key": int(last.get("session_key", 0)),
-                "driver_number": int(last.get("driver_number", 0)),
-                "driver_label": str(last.get("driver_label", "")),
-                "gp_name": str(last.get("gp_name", "")),
-                "session_name": str(last.get("session_name", "")),
-                "rows": int(len(df)),
-                "first_lap": int(df["lap"].min()) if "lap" in df.columns else 0,
-                "last_lap": int(df["lap"].max()) if "lap" in df.columns else 0,
-                "last_updated": str(last.get("timestamp_utc", "")),
-                "key": key,
-            }
-        )
-    out.sort(key=lambda r: r["last_updated"], reverse=True)
-    return out
+    if not dfs:
+        return pd.DataFrame(columns=LOG_COLS)
+    return pd.concat(dfs, ignore_index=True)
