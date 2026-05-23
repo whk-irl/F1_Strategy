@@ -713,7 +713,17 @@ def _render_live_tab(policy: Any, model_type: str = "ppo", model_key: str = "def
         return
 
     if not drivers:
-        st.info("No drivers listed for this session yet.")
+        if client.is_rate_limited():
+            st.info("⏳ OpenF1 API rate-limited — drivers will load shortly. Retrying automatically…")
+        else:
+            st.info("No drivers listed for this session yet.")
+        # Keep the page alive: when auto-refresh is on, retry every 5s instead
+        # of leaving the user stuck on an empty state with no rerun trigger.
+        if auto_refresh:
+            time.sleep(5)
+            st.rerun()
+        elif st.button("🔄 Retry"):
+            st.rerun()
         return
 
     driver_map = {
