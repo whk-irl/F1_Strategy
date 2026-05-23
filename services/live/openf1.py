@@ -83,6 +83,12 @@ class OpenF1Client:
                     # the next call within the cool-off window.
                     self._cache[key] = (now, cached[1])
                     return cached[1]
+                # No cache yet (first fetch for this driver/endpoint).  Return
+                # an empty list so a single rate-limited endpoint doesn't drop
+                # the six other already-cached endpoints in the live tab.  All
+                # callers (get_latest_lap, get_latest_position, …) already
+                # treat an empty list as "no data" and return None.
+                return []
             raise
 
         data = cast(list[dict[str, Any]], resp.json())

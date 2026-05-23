@@ -652,7 +652,7 @@ def _render_live_tab(policy: Any, model_type: str = "ppo", model_key: str = "def
     with col_sess:
         use_latest = st.checkbox("Track latest session", value=True)
     with col_refresh:
-        auto_refresh = st.toggle("Auto-refresh (30 s)", value=False)
+        auto_refresh = st.toggle("Auto-refresh (5 s)", value=False)
     s3_ok, s3_msg = _log_storage_status()
     with col_log:
         log_enabled = st.toggle(
@@ -879,7 +879,9 @@ def _render_live_tab(policy: Any, model_type: str = "ppo", model_key: str = "def
     st.caption(footer)
 
     if auto_refresh:
-        time.sleep(30)
+        # 5s rerun cadence; OpenF1Client TTL is 60s so most calls hit cache
+        # and the effective API rate stays at ~1 call per minute per endpoint.
+        time.sleep(5)
         st.rerun()
     else:
         if st.button("🔄 Refresh now"):
