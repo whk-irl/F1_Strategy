@@ -56,7 +56,7 @@ from stable_baselines3 import PPO
 
 from services.live.obs_builder import DriverLiveState, update_from_openf1
 from services.live.openf1 import OpenF1Client
-from services.live.live_log import (
+from services.live.race_log import (
     LOG_PREFIX,
     PredictionRow,
     append_prediction,
