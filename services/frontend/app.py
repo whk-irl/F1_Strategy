@@ -415,12 +415,10 @@ def _default_live_provider() -> str:
     return os.getenv("PITWALL_LIVE_PROVIDER", "signalr").strip().lower()
 
 
-@st.cache_resource(show_spinner="Connecting to F1 live timing…")
+@st.cache_resource(show_spinner=False)
 def _f1_signalr_client() -> F1LiveTimingClient:
     token = resolve_subscription_token()
-    client = F1LiveTimingClient(subscription_token=token or None)
-    client.ensure_started()
-    return client
+    return F1LiveTimingClient(subscription_token=token or None)
 
 
 def _client_is_signalr(client: Any) -> bool:
@@ -451,6 +449,15 @@ def _show_f1_waiting_hint(client: F1LiveTimingClient) -> None:
     err = client.last_error()
     if err:
         st.caption(f"Last connection error: `{err}`")
+
+
+def _refresh_f1_timing(client: F1LiveTimingClient) -> None:
+    """Pull a fresh snapshot from the F1 SignalR feed (sync, Streamlit-safe)."""
+    with st.spinner("Fetching F1 live timing…"):
+        client.refresh(timeout=4.0)
+    err = client.last_error()
+    if err and not client.has_data():
+        st.error(f"Could not reach F1 live timing feed: `{err}`")
 
 
 @st.cache_resource(show_spinner="Connecting to S3…")
@@ -817,6 +824,9 @@ def _render_live_tab(policy: Any, model_type: str = "ppo", model_key: str = "def
     client, provider_label = _resolve_live_client(provider_choice)
     using_signalr = _client_is_signalr(client)
 
+    if using_signalr:
+        _refresh_f1_timing(client)
+
     # ── Session picker ───────────────────────────────────────────────────────
     col_sess, col_refresh, col_log = st.columns([3, 1, 1])
     with col_sess:
@@ -885,8 +895,16 @@ def _render_live_tab(policy: Any, model_type: str = "ppo", model_key: str = "def
             if using_signalr:
                 if client.is_connected():
                     st.info("⏳ Waiting for session info from F1 live timing…")
+                elif client.last_error():
+                    st.warning(
+                        "Could not connect to F1 live timing. "
+                        "Enable **Auto-refresh** to retry, or check "
+                        "[formula1.com/en/timing/f1-live](https://www.formula1.com/en/timing/f1-live) "
+                        "is showing a live session."
+                    )
+                    st.caption(f"Error: `{client.last_error()}`")
                 else:
-                    st.info("⏳ Connecting to F1 live timing feed…")
+                    st.info("⏳ No live session detected on the F1 timing feed yet.")
                 if _client_is_signalr(client) and client.is_auth_required():
                     _show_f1_waiting_hint(client)
             elif _client_is_auth_required(client) or not _openf1_key_is_configured():
@@ -938,10 +956,13 @@ def _render_live_tab(policy: Any, model_type: str = "ppo", model_key: str = "def
 
     if not drivers:
         if using_signalr:
-            if client.is_connected():
+            if client.is_connected() and not drivers:
                 st.info("⏳ Waiting for driver list from F1 live timing…")
-            else:
-                st.info("⏳ Connecting to F1 live timing feed…")
+            elif client.last_error() and not drivers:
+                st.warning("F1 timing connected but no drivers yet — session may not be live.")
+                st.caption(f"Error: `{client.last_error()}`")
+            elif not drivers:
+                st.info("⏳ No drivers on the timing feed yet.")
             if client.is_auth_required():
                 _show_f1_waiting_hint(client)
         elif _client_is_auth_required(client) or not _openf1_key_is_configured():

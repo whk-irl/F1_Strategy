@@ -4,6 +4,10 @@ Connects to the same feed that powers
 https://www.formula1.com/en/timing/f1-live and exposes an OpenF1-compatible
 interface for the Streamlit live tab.
 
+Uses short-lived synchronous connections (connect → subscribe → collect →
+disconnect) so each Streamlit rerun can fetch fresh data.  Background threads
+are unreliable on Streamlit Cloud.
+
 API: ``wss://livetiming.formula1.com/signalrcore``
 """
 
@@ -27,8 +31,8 @@ logger = logging.getLogger(__name__)
 
 _NEGOTIATE_URL = "https://livetiming.formula1.com/signalrcore/negotiate"
 _CONNECTION_URL = "wss://livetiming.formula1.com/signalrcore"
-_RECONNECT_DELAY_S = 5.0
 _CONNECT_TIMEOUT_S = 15.0
+_DEFAULT_COLLECT_S = 4.0
 
 _TOPICS = [
     "Heartbeat",
@@ -67,66 +71,45 @@ def resolve_subscription_token(explicit: str | None = None) -> str:
 
 
 class F1LiveTimingClient:
-    """Stateful client for the official F1 live timing SignalR feed.
+    """Client for the official F1 live timing SignalR feed.
 
-    A background thread maintains the WebSocket connection and merges delta
-    updates into a :class:`TimingSnapshot`.  Public methods mirror
-    :class:`services.live.openf1_api.OpenF1Client` so the frontend can swap
-    providers without changing observation logic.
+    Call :meth:`refresh` on each Streamlit rerun to open a short-lived
+    WebSocket, merge delta updates into the cached snapshot, and disconnect.
+    Public methods mirror :class:`services.live.openf1_api.OpenF1Client`.
 
     Args:
         subscription_token: Optional F1TV subscription JWT.  When empty the
             client uses the same free feed as
-            https://www.formula1.com/en/timing/f1-live (positions, lap times,
-            compounds, weather).  A token is only needed for F1TV-only extras.
+            https://www.formula1.com/en/timing/f1-live.
     """
 
     def __init__(self, subscription_token: str | None = None) -> None:
         self._token = resolve_subscription_token(subscription_token)
         self._snapshot = TimingSnapshot()
         self._lock = threading.Lock()
-        self._stop = threading.Event()
-        self._thread: threading.Thread | None = None
-        self._connection: Any = None
         self._error: str | None = None
+        self._last_refresh: float = 0.0
 
     # ------------------------------------------------------------------
-    # Connection lifecycle
+    # Connection lifecycle (sync — Streamlit-safe)
     # ------------------------------------------------------------------
+
+    def refresh(self, timeout: float = _DEFAULT_COLLECT_S) -> None:
+        """Connect, collect live updates for *timeout* seconds, then disconnect."""
+        try:
+            self._connect_and_collect(timeout)
+            self._error = None
+        except Exception as exc:  # noqa: BLE001
+            self._error = str(exc)
+            logger.warning("F1 SignalR refresh failed: %s", exc)
+            with self._lock:
+                self._snapshot.connected = False
 
     def ensure_started(self) -> None:
-        """Start the background SignalR thread if not already running."""
-        if self._thread is not None and self._thread.is_alive():
-            return
-        self._stop.clear()
-        self._thread = threading.Thread(target=self._run_loop, name="f1-signalr", daemon=True)
-        self._thread.start()
+        """No-op kept for API compatibility — call :meth:`refresh` instead."""
 
-    def stop(self) -> None:
-        """Stop the background thread and close the WebSocket."""
-        self._stop.set()
-        if self._connection is not None:
-            with contextlib.suppress(Exception):
-                self._connection.stop()
-        if self._thread is not None:
-            self._thread.join(timeout=3.0)
-
-    def _run_loop(self) -> None:
-        while not self._stop.is_set():
-            try:
-                self._connect_once()
-            except Exception as exc:  # noqa: BLE001
-                self._error = str(exc)
-                logger.warning("F1 SignalR connection error: %s", exc)
-                with self._lock:
-                    self._snapshot.connected = False
-            if not self._stop.is_set():
-                time.sleep(_RECONNECT_DELAY_S)
-
-    def _connect_once(self) -> None:
+    def _connect_and_collect(self, collect_s: float) -> None:
         headers: dict[str, str] = {}
-        # POST negotiate (OPTIONS returns 405 on current F1 infra).  Grabs the
-        # AWSALBCORS sticky-session cookie that signalrcore also needs.
         r = requests.post(
             _NEGOTIATE_URL,
             headers={"Content-Type": "application/json"},
@@ -138,9 +121,15 @@ class F1LiveTimingClient:
             headers["Cookie"] = f"AWSALBCORS={r.cookies['AWSALBCORS']}"
 
         token = self._token
+        msg_count = 0
 
         def token_factory() -> str:
             return token
+
+        def on_message(msg: list[Any] | CompletionMessage) -> None:
+            nonlocal msg_count
+            msg_count += 1
+            self._apply_message(msg)
 
         conn = (
             HubConnectionBuilder()
@@ -154,44 +143,32 @@ class F1LiveTimingClient:
             )
             .build()
         )
-        self._connection = conn
         connected = threading.Event()
 
         def on_open() -> None:
-            with self._lock:
-                self._snapshot.connected = True
-                self._error = None
             connected.set()
-            conn.send("Subscribe", [_TOPICS], on_invocation=self._on_message)
-
-        def on_close() -> None:
-            connected.clear()
-            self._mark_disconnected()
+            conn.send("Subscribe", [_TOPICS], on_invocation=on_message)
 
         conn.on_open(on_open)
-        conn.on("feed", self._on_message)
-        conn.on_close(on_close)
+        conn.on("feed", on_message)
 
         conn.start()
-        if not connected.wait(timeout=_CONNECT_TIMEOUT_S):
-            conn.stop()
-            raise TimeoutError("F1 SignalR connection timed out")
+        try:
+            if not connected.wait(timeout=_CONNECT_TIMEOUT_S):
+                raise TimeoutError("F1 SignalR connection timed out")
+            time.sleep(max(collect_s, 0.5))
+        finally:
+            with contextlib.suppress(Exception):
+                conn.stop()
 
-        while not self._stop.is_set() and connected.is_set():
-            time.sleep(0.5)
-
-        with contextlib.suppress(Exception):
-            conn.stop()
-        self._mark_disconnected()
-
-    def _mark_disconnected(self) -> None:
-        with self._lock:
-            self._snapshot.connected = False
-
-    def _on_message(self, msg: list[Any] | CompletionMessage) -> None:
         now = time.monotonic()
         with self._lock:
+            self._last_refresh = now
             self._snapshot.last_update = now
+            self._snapshot.connected = msg_count > 0
+
+    def _apply_message(self, msg: list[Any] | CompletionMessage) -> None:
+        with self._lock:
             if isinstance(msg, CompletionMessage):
                 result = msg.result or {}
                 for topic, payload in result.items():
@@ -216,12 +193,16 @@ class F1LiveTimingClient:
         return False
 
     def is_auth_required(self) -> bool:
-        """True when connected but no timing lines have arrived yet."""
         snap = self._copy_snapshot()
-        return snap.connected and not snap.has_timing_data and not snap.drivers()
+        return self.is_connected() and not snap.has_timing_data and not snap.drivers()
 
     def is_connected(self) -> bool:
-        return self._copy_snapshot().connected
+        snap = self._copy_snapshot()
+        if self._last_refresh <= 0:
+            return False
+        if snap.has_timing_data or snap.drivers() or snap.session_meta():
+            return True
+        return snap.connected and (time.monotonic() - self._last_refresh) < 120
 
     def has_data(self) -> bool:
         snap = self._copy_snapshot()
@@ -235,11 +216,9 @@ class F1LiveTimingClient:
     # ------------------------------------------------------------------
 
     def get_latest_session(self) -> dict[str, Any] | None:
-        self.ensure_started()
         return self._copy_snapshot().session_meta()
 
     def get_sessions(self, year: int) -> list[dict[str, Any]]:
-        self.ensure_started()
         meta = self._copy_snapshot().session_meta()
         if meta is None:
             return []
@@ -249,7 +228,6 @@ class F1LiveTimingClient:
         return [meta]
 
     def get_session(self, session_key: int) -> dict[str, Any] | None:
-        self.ensure_started()
         meta = self._copy_snapshot().session_meta()
         if meta is None:
             return None
@@ -262,14 +240,12 @@ class F1LiveTimingClient:
     # ------------------------------------------------------------------
 
     def get_laps(self, session_key: int, driver_number: int | None = None) -> list[dict[str, Any]]:
-        self.ensure_started()
         if driver_number is None:
             return []
         lap = self._copy_snapshot().latest_lap(int(driver_number))
         return [lap] if lap else []
 
     def get_latest_lap(self, session_key: int, driver_number: int) -> dict[str, Any] | None:
-        self.ensure_started()
         return self._copy_snapshot().latest_lap(int(driver_number))
 
     # ------------------------------------------------------------------
@@ -279,7 +255,6 @@ class F1LiveTimingClient:
     def get_stints(
         self, session_key: int, driver_number: int | None = None
     ) -> list[dict[str, Any]]:
-        self.ensure_started()
         snap = self._copy_snapshot()
         if driver_number is not None:
             return snap.stints_for_driver(int(driver_number))
@@ -288,7 +263,6 @@ class F1LiveTimingClient:
     def get_current_stint(
         self, session_key: int, driver_number: int, current_lap: int
     ) -> dict[str, Any] | None:
-        self.ensure_started()
         return self._copy_snapshot().current_stint(int(driver_number), int(current_lap))
 
     # ------------------------------------------------------------------
@@ -298,14 +272,12 @@ class F1LiveTimingClient:
     def get_positions(
         self, session_key: int, driver_number: int | None = None
     ) -> list[dict[str, Any]]:
-        self.ensure_started()
         if driver_number is None:
             return []
         pos = self._copy_snapshot().latest_position(int(driver_number))
         return [{"position": pos}] if pos is not None else []
 
     def get_latest_position(self, session_key: int, driver_number: int) -> int | None:
-        self.ensure_started()
         return self._copy_snapshot().latest_position(int(driver_number))
 
     # ------------------------------------------------------------------
@@ -315,7 +287,6 @@ class F1LiveTimingClient:
     def get_pit_stops(
         self, session_key: int, driver_number: int | None = None
     ) -> list[dict[str, Any]]:
-        self.ensure_started()
         if driver_number is None:
             return []
         count = self._copy_snapshot().pit_stop_count(int(driver_number))
@@ -326,11 +297,9 @@ class F1LiveTimingClient:
     # ------------------------------------------------------------------
 
     def get_race_control(self, session_key: int) -> list[dict[str, Any]]:
-        self.ensure_started()
         return self._copy_snapshot().race_control_messages
 
     def is_safety_car_active(self, session_key: int, current_lap: int) -> bool:
-        self.ensure_started()
         return self._copy_snapshot().is_safety_car_active()
 
     # ------------------------------------------------------------------
@@ -338,12 +307,10 @@ class F1LiveTimingClient:
     # ------------------------------------------------------------------
 
     def get_weather(self, session_key: int) -> list[dict[str, Any]]:
-        self.ensure_started()
         w = self._copy_snapshot().latest_weather()
         return [w] if w else []
 
     def get_latest_weather(self, session_key: int) -> dict[str, Any] | None:
-        self.ensure_started()
         return self._copy_snapshot().latest_weather()
 
     # ------------------------------------------------------------------
@@ -351,5 +318,4 @@ class F1LiveTimingClient:
     # ------------------------------------------------------------------
 
     def get_drivers(self, session_key: int) -> list[dict[str, Any]]:
-        self.ensure_started()
         return self._copy_snapshot().drivers()
