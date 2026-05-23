@@ -55,6 +55,12 @@ from stable_baselines3 import PPO
 
 from services.live.obs_builder import DriverLiveState, update_from_openf1
 from services.live.openf1_client import OpenF1Client
+from services.live.prediction_log import (
+    PredictionRow,
+    append_prediction,
+    list_logs,
+    load_log,
+)
 from services.simulator.env import F1RaceEnv
 
 # ---------------------------------------------------------------------------
@@ -616,16 +622,22 @@ _PIT_LOSS_BY_CIRCUIT: dict[str, float] = {
 }
 
 
-def _render_live_tab(policy: Any, model_type: str = "ppo") -> None:
+def _render_live_tab(policy: Any, model_type: str = "ppo", model_key: str = "default") -> None:
     """Render the Live Race tab — OpenF1 real-time strategy recommendations."""
     client = _openf1_client()
 
     # ── Session picker ───────────────────────────────────────────────────────
-    col_sess, col_refresh = st.columns([4, 1])
+    col_sess, col_refresh, col_log = st.columns([3, 1, 1])
     with col_sess:
         use_latest = st.checkbox("Track latest session", value=True)
     with col_refresh:
         auto_refresh = st.toggle("Auto-refresh (30 s)", value=False)
+    with col_log:
+        log_enabled = st.toggle(
+            "Log to disk",
+            value=True,
+            help="Persist one row per lap to data/live_logs/. Browse them in the Prediction Log tab.",
+        )
 
     if use_latest:
         try:
@@ -746,6 +758,36 @@ def _render_live_tab(policy: Any, model_type: str = "ppo") -> None:
         best = {0: 1, 1: 2, 2: 3}.get(live_state.compound_encoded, 2)
         action, label = best, f"Pit — {['SOFT', 'MEDIUM', 'HARD'][best - 1]} ⚠"
 
+    # ── Persist prediction (append-on-lap-change) ────────────────────────────
+    log_status_msg: str | None = None
+    if log_enabled and live_state.current_lap > 0:
+        last_logged_key = f"last_logged_lap_{session_key}_{driver_number}"
+        last_logged = st.session_state.get(last_logged_key, 0)
+        if live_state.current_lap > last_logged:
+            try:
+                append_prediction(
+                    PredictionRow(
+                        session_key=int(session_key),
+                        session_name=str(session_type),
+                        gp_name=str(gp_name),
+                        circuit=str(circuit_name),
+                        driver_number=int(driver_number),
+                        driver_label=str(chosen_label),
+                        model_key=str(model_key),
+                        model_type=str(model_type),
+                        state=live_state,
+                        obs=obs,
+                        recommended_action=int(action),
+                        recommended_label=str(label),
+                        probs=probs,
+                        q_values=qv,
+                    )
+                )
+                st.session_state[last_logged_key] = live_state.current_lap
+                log_status_msg = f"📝 Logged lap {live_state.current_lap}"
+            except Exception as exc:  # noqa: BLE001
+                log_status_msg = f"⚠️ Log write failed: {exc}"
+
     # ── Dashboard ────────────────────────────────────────────────────────────
     m1, m2, m3, m4, m5 = st.columns(5)
     m1.metric("Lap", f"{live_state.current_lap} / {live_state.total_laps}")
@@ -795,7 +837,10 @@ def _render_live_tab(policy: Any, model_type: str = "ppo") -> None:
 
     # ── Auto-refresh ─────────────────────────────────────────────────────────
     ts = time.strftime("%H:%M:%S")
-    st.caption(f"Last updated: {ts}  ·  Session key: {session_key}")
+    footer = f"Last updated: {ts}  ·  Session key: {session_key}"
+    if log_status_msg:
+        footer = f"{footer}  ·  {log_status_msg}"
+    st.caption(footer)
 
     if auto_refresh:
         time.sleep(30)
@@ -932,6 +977,125 @@ def _tire_forecast_chart(
 
 
 # ---------------------------------------------------------------------------
+# Prediction Log tab
+# ---------------------------------------------------------------------------
+
+
+def _render_log_tab() -> None:
+    """Render the Prediction Log tab — browse persisted live-race logs."""
+    st.markdown("### 📜 Online Prediction Log")
+    st.caption(
+        "Every lap captured by the **Live Race** tab is appended to a parquet file under "
+        "`data/live_logs/`.  Pick a session below to inspect the timeline."
+    )
+
+    logs = list_logs()
+    if not logs:
+        st.info(
+            "No logs yet.  Open the **🔴 Live Race** tab during a session (with **Log to disk** "
+            "enabled) and the lap-by-lap recommendations will be captured here."
+        )
+        return
+
+    log_options = {
+        (
+            f"{r['gp_name']} — {r['session_name']}  ·  "
+            f"{r['driver_label'] or f'#{r['driver_number']}'}  ·  "
+            f"{r['rows']} laps  ({r['last_updated']})"
+        ): (r["session_key"], r["driver_number"])
+        for r in logs
+    }
+    chosen = st.selectbox("Session log", list(log_options.keys()))
+    session_key, driver_number = log_options[chosen]
+
+    df = load_log(session_key, driver_number)
+    if df.empty:
+        st.warning("Log file exists but contains no rows.")
+        return
+
+    # ── Summary metrics ──────────────────────────────────────────────────────
+    last = df.iloc[-1]
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("Laps logged", len(df))
+    m2.metric("Lap range", f"{int(df['lap'].min())}–{int(df['lap'].max())}")
+    m3.metric("Pit recs",  int((df["recommended_action"] > 0).sum()))
+    m4.metric("Model", f"{last.get('model_key', '?')} ({last.get('model_type', '?')})")
+
+    # ── Timeline chart ───────────────────────────────────────────────────────
+    fig = go.Figure()
+    fig.add_trace(
+        go.Scatter(
+            x=df["lap"],
+            y=df["position"],
+            mode="lines+markers",
+            name="Position",
+            line={"color": "#E8002D", "width": 2},
+            marker={"size": 5},
+        )
+    )
+    pit_recs = df[df["recommended_action"] > 0]
+    if not pit_recs.empty:
+        fig.add_trace(
+            go.Scatter(
+                x=pit_recs["lap"],
+                y=pit_recs["position"],
+                mode="markers",
+                name="Pitwall AI: pit",
+                marker={"symbol": "triangle-down", "size": 12, "color": "#FFD700"},
+            )
+        )
+    sc_laps = df[df["sc_active"]]
+    for lap in sc_laps["lap"].tolist():
+        fig.add_vrect(
+            x0=lap - 0.5, x1=lap + 0.5, fillcolor="yellow", opacity=0.15, line_width=0
+        )
+    fig.update_layout(
+        yaxis={"autorange": "reversed", "title": "Position", "dtick": 1},
+        xaxis={"title": "Lap"},
+        legend={"orientation": "h", "yanchor": "bottom", "y": 1.02, "xanchor": "right", "x": 1},
+        margin={"l": 40, "r": 20, "t": 10, "b": 40},
+        height=320,
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(20,20,30,1)",
+        font={"color": "#FFFFFF"},
+        yaxis_gridcolor="#333",
+        xaxis_gridcolor="#333",
+    )
+    st.plotly_chart(fig, use_container_width=True)
+    st.caption("🟡 Yellow bands = SC/VSC active when prediction was made  ·  ▼ = pit recommendation")
+
+    # ── Full log table + download ────────────────────────────────────────────
+    view_cols = [
+        "timestamp_utc",
+        "lap",
+        "position",
+        "compound_name",
+        "tyre_life",
+        "pit_stops",
+        "sc_active",
+        "wet_fraction",
+        "recommended_label",
+        "prob_stay",
+        "prob_soft",
+        "prob_medium",
+        "prob_hard",
+    ]
+    table = df[view_cols].copy()
+    for col in ("prob_stay", "prob_soft", "prob_medium", "prob_hard"):
+        table[col] = table[col].apply(lambda x: f"{x:.1%}")
+    table["wet_fraction"] = table["wet_fraction"].apply(lambda x: f"{x:.0%}")
+    st.dataframe(table, use_container_width=True, hide_index=True)
+
+    csv_bytes = df.to_csv(index=False).encode("utf-8")
+    st.download_button(
+        "⬇ Download full log (CSV)",
+        data=csv_bytes,
+        file_name=f"pitwall_log_{session_key}_{driver_number}.csv",
+        mime="text/csv",
+    )
+
+
+# ---------------------------------------------------------------------------
 # Main app
 # ---------------------------------------------------------------------------
 
@@ -1034,10 +1198,13 @@ def main() -> None:
     st.info(
         "**📊 Race Replay** — replay any race from 2022–2025 and see what Pitwall AI would have "
         "recommended lap-by-lap.  |  **🔴 Live Race** — real-time recommendations via the OpenF1 "
-        "API during a race weekend.  Click a tab below to switch.",
+        "API during a race weekend.  |  **📜 Prediction Log** — browse persisted lap-by-lap "
+        "recommendations captured during live sessions.",
         icon="ℹ️",
     )
-    tab_replay, tab_live = st.tabs(["📊 Race Replay", "🔴 Live Race"])
+    tab_replay, tab_live, tab_log = st.tabs(
+        ["📊 Race Replay", "🔴 Live Race", "📜 Prediction Log"]
+    )
 
     # ═════════════════════════════════════════════════════════════════════════
     # TAB 1 — Race Replay
@@ -1314,7 +1481,13 @@ def main() -> None:
     # TAB 2 — Live Race
     # ═════════════════════════════════════════════════════════════════════════
     with tab_live:
-        _render_live_tab(policy, model_type)
+        _render_live_tab(policy, model_type, selected_model_key)
+
+    # ═════════════════════════════════════════════════════════════════════════
+    # TAB 3 — Prediction Log
+    # ═════════════════════════════════════════════════════════════════════════
+    with tab_log:
+        _render_log_tab()
 
 
 if __name__ == "__main__":
