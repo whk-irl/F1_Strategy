@@ -33,12 +33,19 @@ class OpenF1Client:
             Default 60s — laps are ~90s long during a sprint/race so a 60s
             TTL is fresh enough for strategy decisions while halving the
             request rate compared to the previous 25s default.
+        api_key: Optional OpenF1 API key.  When set, sent as a Bearer token on
+            every request, unlocking the authenticated tier (e.g. the
+            year-filtered ``/sessions?year=…`` endpoint).  Read by the
+            Streamlit factory from ``PITWALL_OPENF1_API_KEY`` /
+            ``OPENF1_API_KEY``.
     """
 
-    def __init__(self, ttl: int = 60) -> None:
+    def __init__(self, ttl: int = 60, api_key: str | None = None) -> None:
         self._ttl = ttl
         self._cache: dict[str, tuple[float, list[dict[str, Any]]]] = {}
         self._session = requests.Session()
+        if api_key:
+            self._session.headers["Authorization"] = f"Bearer {api_key}"
         # Monotonic timestamp until which we should not hit the API again.
         self._rate_limited_until: float = 0.0
 
@@ -60,10 +67,13 @@ class OpenF1Client:
             if now - ts < self._ttl:
                 return data
 
-        # If we're still in a 429 cool-off, serve the (possibly stale) cache
-        # rather than hammering the API and getting blocked further.
-        if now < self._rate_limited_until and cached is not None:
-            return cached[1]
+        # In cool-off: serve cached data if we have any, otherwise short-circuit
+        # to an empty list *without* hitting the API.  Crucial — without this
+        # the 5-second live-tab refresh would re-trigger every failing request,
+        # which would keep re-extending the cool-off and the user would never
+        # see the rate-limit window actually expire.
+        if now < self._rate_limited_until:
+            return cached[1] if cached is not None else []
 
         url = f"{_BASE}/{endpoint}"
         try:

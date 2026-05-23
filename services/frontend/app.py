@@ -351,7 +351,13 @@ def _openf1_client() -> OpenF1Client:
     # 60s TTL halves the API request rate vs. the original 25s default, which
     # was triggering 429s during live sessions.  Laps are ~90s long so freshness
     # is fine for strategy decisions.
-    return OpenF1Client(ttl=60)
+    #
+    # PITWALL_OPENF1_API_KEY (or the bare OPENF1_API_KEY) unlocks the
+    # authenticated tier, which OpenF1 introduced in late 2025 for endpoints
+    # like /sessions?year=…  Set it as a Streamlit Cloud secret to restore
+    # the race/sprint session filter; without it we fall back gracefully.
+    api_key = os.getenv("PITWALL_OPENF1_API_KEY") or os.getenv("OPENF1_API_KEY")
+    return OpenF1Client(ttl=60, api_key=api_key)
 
 
 @st.cache_resource(show_spinner="Connecting to S3…")
