@@ -12,7 +12,6 @@ just persists whatever it's handed.
 
 from __future__ import annotations
 
-import io
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
@@ -23,6 +22,22 @@ import pandas as pd
 from services.ingestion.config import IngestionSettings
 from services.ingestion.storage import ObjectStorage
 from services.live.obs_builder import DriverLiveState
+
+# Explicit __all__ forces Streamlit Cloud to invalidate its module file cache
+# when these symbols change.  Without it, freshly-added names like LOG_PREFIX
+# may not be visible until the app is fully redeployed (see commit 817b795
+# for the same workaround applied to the sequence-tire prediction module).
+__all__ = [
+    "LOG_COLS",
+    "LOG_PREFIX",
+    "PredictionRow",
+    "append_prediction",
+    "get_storage",
+    "list_logs",
+    "load_log",
+    "log_key",
+    "reset_storage",
+]
 
 # S3 key prefix for live prediction logs.
 LOG_PREFIX = "live_logs"
