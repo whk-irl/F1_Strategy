@@ -157,7 +157,7 @@ omit = [
     "services/simulator/*",
     "services/frontend/*",
     "services/api/*",
-    "services/live/openf1_client.py",  # thin HTTP wrapper; tested via integration tests
+    "services/live/openf1.py",  # thin HTTP wrapper; tested via integration tests
     "services/ingestion/fastf1_client.py",
     "services/ingestion/pipeline.py",
     "ml/features/*",
