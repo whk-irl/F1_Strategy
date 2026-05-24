@@ -1,9 +1,11 @@
 name: CI
 
 on:
-  push:
-    branches: [main, test_branch, "feat/**", "fix/**", "refactor/**"]
   pull_request:
+    branches: [main]
+  # Run on main pushes only — feature branches rely on PR checks, avoiding
+  # redundant CI (and Streamlit Cloud redeploy triggers) on every commit.
+  push:
     branches: [main]
 
 concurrency:

@@ -16,6 +16,7 @@ from typing import Any
 
 # TrackStatus codes from the F1 feed (mirrors fastf1.livetiming.data mapping).
 _SC_STATUS_CODES = frozenset({"4", "6", "7"})
+_ENDED_SESSION_STATUSES = frozenset({"finalised", "finished", "closed", "ends"})
 
 
 def deep_merge(base: dict[str, Any], update: dict[str, Any]) -> dict[str, Any]:
@@ -183,8 +184,9 @@ class TimingSnapshot:
         meeting = self.session_info.get("Meeting")
         if not isinstance(meeting, dict):
             return None
-        key = meeting.get("Key")
-        if key is None:
+        session_key = self.session_info.get("Key")
+        meeting_key = meeting.get("Key")
+        if session_key is None and meeting_key is None:
             return None
 
         circuit = meeting.get("Circuit")
@@ -201,7 +203,8 @@ class TimingSnapshot:
                 year = int(str(date_start)[:4])
 
         return {
-            "session_key": int(key),
+            "session_key": int(session_key if session_key is not None else meeting_key),
+            "meeting_key": int(meeting_key) if meeting_key is not None else None,
             "meeting_name": meeting.get("Name"),
             "country_name": country_name,
             "circuit_short_name": circuit_short,
@@ -209,10 +212,24 @@ class TimingSnapshot:
             "session_type": "Race"
             if str(session_name).lower() in ("race", "sprint")
             else session_name,
+            "session_status": self.session_info.get("SessionStatus"),
             "total_laps": self.total_laps(),
             "date_start": date_start,
+            "date_end": self.session_info.get("EndDate"),
             "year": year,
         }
+
+    def is_session_finalised(self) -> bool:
+        """Return True when the feed marks the current session as ended."""
+        status = str(self.session_info.get("SessionStatus", "")).lower()
+        if status in _ENDED_SESSION_STATUSES:
+            return True
+        archive = self.session_info.get("ArchiveStatus")
+        if isinstance(archive, dict):
+            archive_status = str(archive.get("Status", "")).lower()
+            if archive_status in {"complete", "finalised", "finished"}:
+                return True
+        return False
 
     def drivers(self) -> list[dict[str, Any]]:
         """Return driver roster in OpenF1-compatible shape."""

@@ -1,16 +1,17 @@
-"""Persistent log of live-race strategy predictions.
+"""Persistent live-race logs in OpenF1-compatible layout on S3.
 
-Each call to :func:`append_prediction` writes one row capturing the model's
-recommendation for a single lap.  Logs are stored as Parquet objects in S3
-under ``prediction_log/{year}/{race_folder}/{driver_number}.parquet`` (e.g.
-``prediction_log/2026/Canada_Sprint/1.parquet``).
+Each OpenF1-style *endpoint* is stored as one Parquet file per session:
 
-The race folder name is derived from OpenF1 session metadata so all drivers
-for a given race end up in the same folder, which makes "show the whole race"
-a simple S3 prefix listing.
+    pitwall_live/laps/session_key=9839/data.parquet
+    pitwall_live/position/session_key=9839/data.parquet
+    pitwall_live/stints/session_key=9839/data.parquet
+    pitwall_live/weather/session_key=9839/data.parquet
+    pitwall_live/strategy_predictions/session_key=9839/data.parquet
+    pitwall_live/sessions/session_key=9839/data.parquet
 
-Append-on-lap-change is enforced by the caller (Streamlit tab) — this module
-just persists whatever it's handed.
+Column names mirror the OpenF1 REST API where applicable (``session_key``,
+``meeting_key``, ``driver_number``, ``date``, ``lap_number``, …) so logs can
+be joined with OpenF1 exports or queried like API responses.
 """
 
 from __future__ import annotations
@@ -24,79 +25,115 @@ import pandas as pd
 
 from services.ingestion.config import IngestionSettings
 from services.ingestion.storage import ObjectStorage
-from services.live.obs_builder import DriverLiveState
+from services.live.obs_builder import DriverLiveState, update_from_openf1
 
-# Explicit __all__ forces Streamlit Cloud to invalidate its module file cache
-# when these symbols change (see commit 817b795 / dff6fe2 for the cache
-# workarounds applied elsewhere in this repo).
 __all__ = [
-    "LOG_COLS",
+    "ENDPOINTS",
     "LOG_PREFIX",
-    "PredictionRow",
-    "append_prediction",
+    "LiveTickContext",
+    "append_live_tick",
+    "endpoint_key",
     "get_storage",
     "list_races",
+    "list_sessions",
+    "load_endpoint",
     "load_race",
-    "log_key",
-    "race_folder_name",
-    "race_year",
+    "load_session_predictions",
     "reset_storage",
 ]
 
-# S3 key prefix for live prediction logs.
-LOG_PREFIX = "prediction_log"
+LOG_PREFIX = "pitwall_live"
 
-# Columns persisted to parquet, in stable order.
-_BASE_COLS: list[str] = [
-    "timestamp_utc",
+LAPS_COLS: list[str] = [
+    "date",
     "session_key",
-    "session_name",
-    "gp_name",
-    "circuit",
+    "meeting_key",
     "driver_number",
-    "driver_label",
-    "model_key",
-    "model_type",
-    "lap",
-    "total_laps",
+    "lap_number",
+    "lap_duration",
+    "is_pit_out_lap",
+]
+
+POSITION_COLS: list[str] = [
+    "date",
+    "session_key",
+    "meeting_key",
+    "driver_number",
     "position",
-    "compound_encoded",
-    "compound_name",
+    "lap_number",
+]
+
+STINTS_COLS: list[str] = [
+    "date",
+    "session_key",
+    "meeting_key",
+    "driver_number",
+    "stint_number",
+    "compound",
+    "lap_start",
+    "lap_end",
+    "tyre_age_at_start",
+]
+
+WEATHER_COLS: list[str] = [
+    "date",
+    "session_key",
+    "meeting_key",
+    "track_temperature",
+    "rainfall",
+]
+
+STRATEGY_COLS: list[str] = [
+    "date",
+    "session_key",
+    "meeting_key",
+    "driver_number",
+    "lap_number",
+    "position",
+    "compound",
     "tyre_life",
     "pit_stops",
     "sc_active",
-    "sc_probability",
     "wet_fraction",
-    "gap_ahead_s",
-    "gap_behind_s",
     "recommended_action",
     "recommended_label",
     "prob_stay",
     "prob_soft",
     "prob_medium",
     "prob_hard",
-    "q_stay",
-    "q_soft",
-    "q_medium",
-    "q_hard",
+    "model_key",
+    "model_type",
+] + [f"obs_{i:02d}" for i in range(21)]
+
+SESSIONS_COLS: list[str] = [
+    "date",
+    "session_key",
+    "meeting_key",
+    "session_name",
+    "session_type",
+    "year",
+    "country_name",
+    "circuit_short_name",
+    "meeting_name",
+    "date_start",
+    "date_end",
+    "total_laps",
 ]
-_OBS_COLS: list[str] = [f"obs_{i:02d}" for i in range(21)]
-LOG_COLS: list[str] = _BASE_COLS + _OBS_COLS
 
+ENDPOINTS: dict[str, list[str]] = {
+    "laps": LAPS_COLS,
+    "position": POSITION_COLS,
+    "stints": STINTS_COLS,
+    "weather": WEATHER_COLS,
+    "strategy_predictions": STRATEGY_COLS,
+    "sessions": SESSIONS_COLS,
+}
 
-# Module-level singleton — created lazily so import never fails when S3 is
-# unconfigured.  Streamlit caches this at the call site via @st.cache_resource.
 _storage: ObjectStorage | None = None
 
 
 def get_storage() -> ObjectStorage:
-    """Return a configured ObjectStorage instance.  Constructed on first use.
-
-    Raises:
-        RuntimeError: If the storage backend can't be initialised (missing
-            bucket, bad credentials, network).  Callers should surface this
-            to the UI so the user knows logging is disabled for the session.
-    """
+    """Return a configured ObjectStorage instance (lazy singleton)."""
     global _storage
     if _storage is None:
         settings = IngestionSettings()
@@ -110,187 +147,352 @@ def reset_storage() -> None:
     _storage = None
 
 
-def race_folder_name(session_meta: dict[str, Any]) -> str:
-    """Derive a stable folder name from OpenF1 session metadata.
-
-    Prefers ``country_name`` over ``circuit_short_name`` so a Canada round
-    becomes ``Canada_Sprint`` rather than ``Montreal_Sprint``.  Combined with
-    ``session_name`` to disambiguate Sprint vs Race for the same weekend.
-
-    Examples:
-        ``{"country_name": "Canada", "session_name": "Sprint"}`` → ``Canada_Sprint``
-        ``{"circuit_short_name": "Suzuka", "session_name": "Race"}`` → ``Suzuka_Race``
-    """
-    country = session_meta.get("country_name")
-    circuit = session_meta.get("circuit_short_name")
-    session = session_meta.get("session_name", "Session")
-    primary = country or circuit or "Unknown"
-    folder = f"{primary}_{session}".replace(" ", "_")
-    return folder.strip("_") or "Unknown_Session"
+def endpoint_key(endpoint: str, session_key: int) -> str:
+    """Return the S3 object key for an OpenF1-style endpoint file."""
+    if endpoint not in ENDPOINTS:
+        raise ValueError(f"Unknown endpoint: {endpoint}")
+    return f"{LOG_PREFIX}/{endpoint}/session_key={int(session_key)}/data.parquet"
 
 
-def race_year(session_meta: dict[str, Any]) -> int:
-    """Derive the year from session_meta (year field or date_start ISO prefix)."""
-    y = session_meta.get("year")
-    if y:
-        try:
-            return int(y)
-        except (TypeError, ValueError):
-            pass
-    ds = session_meta.get("date_start")
-    if ds:
-        try:
-            return int(str(ds)[:4])
-        except (ValueError, TypeError):
-            pass
-    return datetime.now(timezone.utc).year
+def _utc_now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="milliseconds")
 
 
-def log_key(year: int, race_folder: str, driver_number: int) -> str:
-    """Return the S3 object key for a (year, race, driver) log file."""
-    return f"{LOG_PREFIX}/{int(year)}/{race_folder}/{int(driver_number)}.parquet"
-
-
-@dataclass
-class PredictionRow:
-    """One captured prediction.  Mirrors :data:`LOG_COLS`."""
-
-    session_key: int
-    session_name: str
-    gp_name: str
-    circuit: str
-    driver_number: int
-    driver_label: str
-    model_key: str
-    model_type: str
-    state: DriverLiveState
-    obs: np.ndarray
-    recommended_action: int
-    recommended_label: str
-    probs: dict[str, float]
-    q_values: dict[str, float] | None
-
-    def to_dict(self) -> dict[str, Any]:
-        """Flatten this row to the persisted schema."""
-        compound_name = {0: "SOFT", 1: "MEDIUM", 2: "HARD", 3: "INTER", 4: "WET", 5: "?"}[
-            self.state.compound_encoded
-        ]
-        row: dict[str, Any] = {
-            "timestamp_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-            "session_key": int(self.session_key),
-            "session_name": self.session_name,
-            "gp_name": self.gp_name,
-            "circuit": self.circuit,
-            "driver_number": int(self.driver_number),
-            "driver_label": self.driver_label,
-            "model_key": self.model_key,
-            "model_type": self.model_type,
-            "lap": int(self.state.current_lap),
-            "total_laps": int(self.state.total_laps),
-            "position": int(self.state.position),
-            "compound_encoded": int(self.state.compound_encoded),
-            "compound_name": compound_name,
-            "tyre_life": int(self.state.tyre_life),
-            "pit_stops": int(self.state.pit_stops),
-            "sc_active": bool(self.state.sc_active),
-            "sc_probability": float(self.state.sc_probability),
-            "wet_fraction": float(self.state.wet_fraction),
-            "gap_ahead_s": float(self.state.gap_ahead_s),
-            "gap_behind_s": float(self.state.gap_behind_s),
-            "recommended_action": int(self.recommended_action),
-            "recommended_label": self.recommended_label,
-            "prob_stay": float(self.probs.get("Stay out", 0.0)),
-            "prob_soft": float(self.probs.get("Pit — SOFT", 0.0)),
-            "prob_medium": float(self.probs.get("Pit — MEDIUM", 0.0)),
-            "prob_hard": float(self.probs.get("Pit — HARD", 0.0)),
-            "q_stay": float(self.q_values["Stay out"]) if self.q_values else float("nan"),
-            "q_soft": float(self.q_values["Pit — SOFT"]) if self.q_values else float("nan"),
-            "q_medium": float(self.q_values["Pit — MEDIUM"]) if self.q_values else float("nan"),
-            "q_hard": float(self.q_values["Pit — HARD"]) if self.q_values else float("nan"),
-        }
-        obs_arr = np.asarray(self.obs, dtype=float).flatten()
-        for i, col in enumerate(_OBS_COLS):
-            row[col] = float(obs_arr[i]) if i < obs_arr.size else float("nan")
-        return row
-
-
-def append_prediction(row: PredictionRow, year: int, race_folder: str) -> str:
-    """Append one prediction row to the appropriate S3 log object.
-
-    Read-modify-write: parquet doesn't support cheap appends, so we pull the
-    existing object (if any), concatenate, and re-upload.  Fine for the
-    once-per-lap cadence.  Returns the S3 key written.
-
-    Args:
-        row: The prediction to persist.
-        year: 4-digit year used in the S3 path.
-        race_folder: Folder slug (e.g. ``"Canada_Sprint"``) — typically from
-            :func:`race_folder_name`.
-    """
+def _append_rows(
+    endpoint: str,
+    session_key: int,
+    rows: list[dict[str, Any]],
+    *,
+    dedupe_on: list[str] | None = None,
+) -> str | None:
+    """Append rows to an endpoint parquet; return the S3 key or None if empty."""
+    if not rows:
+        return None
+    columns = ENDPOINTS[endpoint]
     storage = get_storage()
-    key = log_key(year, race_folder, row.driver_number)
-    new_df = pd.DataFrame([row.to_dict()], columns=LOG_COLS)
+    key = endpoint_key(endpoint, session_key)
+    new_df = pd.DataFrame(rows, columns=columns)
 
     try:
         existing = storage.read_parquet(key)
-        for col in LOG_COLS:
+        for col in columns:
             if col not in existing.columns:
                 existing[col] = pd.NA
-        combined = pd.concat([existing[LOG_COLS], new_df], ignore_index=True)
+        combined = pd.concat([existing[columns], new_df], ignore_index=True)
     except KeyError:
         combined = new_df
+
+    if dedupe_on:
+        combined = combined.drop_duplicates(subset=dedupe_on, keep="last")
 
     storage.write_parquet(combined, key)
     return key
 
 
-def list_races() -> list[dict[str, Any]]:
-    """Return one entry per (year, race_folder) under :data:`LOG_PREFIX`.
+@dataclass
+class LiveTickContext:
+    """Inputs for one full-field logging tick during a live race."""
 
-    Each entry has: ``year`` (int), ``race_folder`` (str), ``n_drivers`` (int),
-    ``keys`` (list of S3 keys for the drivers in this race).  Sorted newest
-    year first, then race name.
+    session_meta: dict[str, Any]
+    client: Any
+    drivers: list[dict[str, Any]]
+    policy: Any
+    model_type: str
+    model_key: str
+    sc_active: bool
+    field_stints: list[dict[str, Any]]
+    weather: dict[str, Any] | None
+    pit_loss_s: float
+    recommend_fn: Any
+    driver_states: dict[int, DriverLiveState]
+
+
+def append_live_tick(ctx: LiveTickContext) -> list[str]:
+    """Log a full-field snapshot across all OpenF1-style endpoints.
+
+    Writes laps, position, stints, weather, strategy predictions, and session
+    metadata for every driver on the timing feed.
+
+    Returns:
+        List of S3 keys written this tick.
     """
+    session_key = int(ctx.session_meta["session_key"])
+    meeting_key = ctx.session_meta.get("meeting_key")
+    meeting_key_val = int(meeting_key) if meeting_key is not None else None
+    now = _utc_now_iso()
+    total_laps = int(ctx.session_meta.get("total_laps") or 0)
+    n_drivers = len(ctx.drivers)
+
+    lap_rows: list[dict[str, Any]] = []
+    pos_rows: list[dict[str, Any]] = []
+    stint_rows: list[dict[str, Any]] = []
+    pred_rows: list[dict[str, Any]] = []
+
+    for driver in ctx.drivers:
+        driver_number = int(driver["driver_number"])
+        state = ctx.driver_states.get(driver_number)
+        if state is None:
+            state = DriverLiveState(
+                driver_number=driver_number,
+                total_laps=max(total_laps, 1),
+                pit_loss_s=ctx.pit_loss_s,
+                n_drivers=n_drivers,
+            )
+            ctx.driver_states[driver_number] = state
+
+        try:
+            lap_record = ctx.client.get_latest_lap(session_key, driver_number)
+            stint_record = ctx.client.get_current_stint(
+                session_key, driver_number, state.current_lap
+            )
+            position = ctx.client.get_latest_position(session_key, driver_number)
+            pit_stops = len(ctx.client.get_pit_stops(session_key, driver_number))
+        except Exception:  # noqa: BLE001
+            continue
+
+        update_from_openf1(
+            state,
+            lap_record,
+            stint_record,
+            position,
+            pit_stops,
+            ctx.sc_active,
+            ctx.field_stints,
+            ctx.weather,
+        )
+
+        if state.current_lap <= 0:
+            continue
+
+        lap_duration = None
+        if lap_record is not None:
+            lap_duration = lap_record.get("lap_duration")
+
+        lap_rows.append(
+            {
+                "date": now,
+                "session_key": session_key,
+                "meeting_key": meeting_key_val,
+                "driver_number": driver_number,
+                "lap_number": state.current_lap,
+                "lap_duration": float(lap_duration) if lap_duration is not None else None,
+                "is_pit_out_lap": False,
+            }
+        )
+
+        if position is not None:
+            pos_rows.append(
+                {
+                    "date": now,
+                    "session_key": session_key,
+                    "meeting_key": meeting_key_val,
+                    "driver_number": driver_number,
+                    "position": int(position),
+                    "lap_number": state.current_lap,
+                }
+            )
+
+        if stint_record is not None:
+            compound = stint_record.get("compound")
+            lap_start = int(stint_record.get("lap_start") or 1)
+            lap_end_raw = stint_record.get("lap_end")
+            stint_rows.append(
+                {
+                    "date": now,
+                    "session_key": session_key,
+                    "meeting_key": meeting_key_val,
+                    "driver_number": driver_number,
+                    "stint_number": max(state.pit_stops + 1, 1),
+                    "compound": compound,
+                    "lap_start": lap_start,
+                    "lap_end": int(lap_end_raw) if lap_end_raw is not None else None,
+                    "tyre_age_at_start": max(state.current_lap - lap_start, 0),
+                }
+            )
+
+        obs = state.build_obs()
+        action, label, probs, qv = ctx.recommend_fn(obs, ctx.policy, ctx.model_type)
+        compound_name = {0: "SOFT", 1: "MEDIUM", 2: "HARD", 3: "INTER", 4: "WET", 5: "?"}.get(
+            state.compound_encoded, "?"
+        )
+        row: dict[str, Any] = {
+            "date": now,
+            "session_key": session_key,
+            "meeting_key": meeting_key_val,
+            "driver_number": driver_number,
+            "lap_number": state.current_lap,
+            "position": state.position,
+            "compound": compound_name,
+            "tyre_life": state.tyre_life,
+            "pit_stops": state.pit_stops,
+            "sc_active": ctx.sc_active,
+            "wet_fraction": state.wet_fraction,
+            "recommended_action": int(action),
+            "recommended_label": str(label),
+            "prob_stay": float(probs.get("Stay out", 0.0)),
+            "prob_soft": float(probs.get("Pit — SOFT", 0.0)),
+            "prob_medium": float(probs.get("Pit — MEDIUM", 0.0)),
+            "prob_hard": float(probs.get("Pit — HARD", 0.0)),
+            "model_key": ctx.model_key,
+            "model_type": ctx.model_type,
+        }
+        obs_arr = np.asarray(obs, dtype=float).flatten()
+        for i in range(21):
+            row[f"obs_{i:02d}"] = float(obs_arr[i]) if i < obs_arr.size else float("nan")
+        pred_rows.append(row)
+
+    written: list[str] = []
+    for endpoint, rows, dedupe in (
+        ("laps", lap_rows, ["driver_number", "lap_number"]),
+        ("position", pos_rows, ["driver_number", "lap_number"]),
+        ("stints", stint_rows, ["driver_number", "stint_number", "lap_start"]),
+        ("strategy_predictions", pred_rows, ["driver_number", "lap_number"]),
+    ):
+        key = _append_rows(endpoint, session_key, rows, dedupe_on=dedupe)
+        if key:
+            written.append(key)
+
+    if ctx.weather is not None:
+        wrow = {
+            "date": now,
+            "session_key": session_key,
+            "meeting_key": meeting_key_val,
+            "track_temperature": ctx.weather.get("track_temperature"),
+            "rainfall": ctx.weather.get("rainfall"),
+        }
+        key = _append_rows("weather", session_key, [wrow], dedupe_on=None)
+        if key:
+            written.append(key)
+
+    session_row = {
+        "date": now,
+        "session_key": session_key,
+        "meeting_key": meeting_key_val,
+        "session_name": ctx.session_meta.get("session_name"),
+        "session_type": ctx.session_meta.get("session_type"),
+        "year": ctx.session_meta.get("year"),
+        "country_name": ctx.session_meta.get("country_name"),
+        "circuit_short_name": ctx.session_meta.get("circuit_short_name"),
+        "meeting_name": ctx.session_meta.get("meeting_name"),
+        "date_start": ctx.session_meta.get("date_start"),
+        "date_end": ctx.session_meta.get("date_end"),
+        "total_laps": total_laps,
+    }
+    key = _append_rows("sessions", session_key, [session_row], dedupe_on=["session_key"])
+    if key:
+        written.append(key)
+
+    return written
+
+
+def list_sessions() -> list[dict[str, Any]]:
+    """List sessions that have strategy prediction logs."""
     storage = get_storage()
-    by_race: dict[tuple[int, str], dict[str, Any]] = {}
-    for key in storage.list_keys(f"{LOG_PREFIX}/"):
-        # Expected layout: prediction_log/{year}/{race_folder}/{driver}.parquet
+    by_session: dict[int, dict[str, Any]] = {}
+    prefix = f"{LOG_PREFIX}/strategy_predictions/"
+    for key in storage.list_keys(prefix):
         parts = key.split("/")
-        if len(parts) < 4 or parts[0] != LOG_PREFIX:
+        if len(parts) < 3:
+            continue
+        session_part = parts[2]
+        if not session_part.startswith("session_key="):
             continue
         try:
-            year_int = int(parts[1])
-        except (ValueError, TypeError):
+            session_key = int(session_part.split("=", 1)[1])
+        except (ValueError, IndexError):
             continue
-        race = parts[2]
-        entry = by_race.setdefault(
-            (year_int, race),
-            {"year": year_int, "race_folder": race, "n_drivers": 0, "keys": []},
-        )
-        entry["n_drivers"] += 1
-        entry["keys"].append(key)
+        by_session.setdefault(session_key, {"session_key": session_key, "keys": []})
+        by_session[session_key]["keys"].append(key)
+
+    sessions_meta = load_all_sessions_meta()
+    for session_key, entry in by_session.items():
+        meta = sessions_meta.get(session_key, {})
+        entry.update(meta)
+        try:
+            preds = load_endpoint("strategy_predictions", session_key)
+            entry["n_rows"] = len(preds)
+            entry["n_drivers"] = int(preds["driver_number"].nunique()) if not preds.empty else 0
+        except Exception:  # noqa: BLE001
+            entry["n_rows"] = 0
+            entry["n_drivers"] = 0
+
     return sorted(
-        by_race.values(),
-        key=lambda r: (r["year"], r["race_folder"]),
+        by_session.values(),
+        key=lambda s: (s.get("year") or 0, s.get("session_key") or 0),
         reverse=True,
     )
 
 
-def load_race(year: int, race_folder: str) -> pd.DataFrame:
-    """Load and concatenate every driver's log for a given (year, race_folder).
-
-    Returns an empty DataFrame (with the right columns) if the folder is
-    missing or all files are unreadable.
-    """
+def load_all_sessions_meta() -> dict[int, dict[str, Any]]:
+    """Load the latest metadata row per session_key from sessions endpoint files."""
     storage = get_storage()
-    prefix = f"{LOG_PREFIX}/{int(year)}/{race_folder}/"
-    keys = storage.list_keys(prefix)
-    dfs: list[pd.DataFrame] = []
-    for key in keys:
+    meta: dict[int, dict[str, Any]] = {}
+    for key in storage.list_keys(f"{LOG_PREFIX}/sessions/"):
         try:
-            dfs.append(storage.read_parquet(key))
-        except Exception:  # noqa: BLE001 — skip corrupt files rather than crash the tab
+            df = storage.read_parquet(key)
+        except Exception:  # noqa: BLE001
             continue
-    if not dfs:
-        return pd.DataFrame(columns=LOG_COLS)
-    return pd.concat(dfs, ignore_index=True)
+        if df.empty or "session_key" not in df.columns:
+            continue
+        row = df.sort_values("date").iloc[-1]
+        sk = int(row["session_key"])
+        meta[sk] = row.to_dict()
+    return meta
+
+
+def load_endpoint(endpoint: str, session_key: int) -> pd.DataFrame:
+    """Load one endpoint parquet for a session."""
+    storage = get_storage()
+    key = endpoint_key(endpoint, session_key)
+    try:
+        return storage.read_parquet(key)
+    except KeyError:
+        return pd.DataFrame(columns=ENDPOINTS[endpoint])
+
+
+def load_session_predictions(session_key: int) -> pd.DataFrame:
+    """Load strategy predictions for a session (primary log for the UI)."""
+    return load_endpoint("strategy_predictions", session_key)
+
+
+def list_races() -> list[dict[str, Any]]:
+    """Backward-compatible alias for :func:`list_sessions`."""
+    races: list[dict[str, Any]] = []
+    for s in list_sessions():
+        label = s.get("meeting_name") or s.get("country_name") or f"Session {s['session_key']}"
+        session_name = s.get("session_name") or "Race"
+        races.append(
+            {
+                "year": int(s.get("year") or datetime.now(timezone.utc).year),
+                "race_folder": f"{label}_{session_name}".replace(" ", "_"),
+                "session_key": s["session_key"],
+                "n_drivers": s.get("n_drivers", 0),
+                "keys": s.get("keys", []),
+            }
+        )
+    return races
+
+
+def load_race(year: int, race_folder: str) -> pd.DataFrame:
+    """Backward-compatible loader — maps legacy race_folder to session_key via metadata."""
+    for session in list_sessions():
+        label = session.get("meeting_name") or session.get("country_name") or ""
+        session_name = session.get("session_name") or "Race"
+        folder = f"{label}_{session_name}".replace(" ", "_")
+        if int(session.get("year") or 0) == int(year) and folder == race_folder:
+            return _predictions_for_ui(load_session_predictions(int(session["session_key"])))
+    return pd.DataFrame()
+
+
+def _predictions_for_ui(df: pd.DataFrame) -> pd.DataFrame:
+    """Map OpenF1-style strategy columns to legacy Prediction Log UI names."""
+    if df.empty:
+        return df
+    out = df.copy()
+    out["timestamp_utc"] = out["date"]
+    out["lap"] = out["lap_number"]
+    out["compound_name"] = out.get("compound", pd.Series(dtype=str))
+    out["driver_label"] = out["driver_number"].apply(lambda n: f"#{n}")
+    out["gp_name"] = out.get("meeting_name", pd.Series(dtype=str))
+    out["circuit"] = out.get("circuit_short_name", pd.Series(dtype=str))
+    return out

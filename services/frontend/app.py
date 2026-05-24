@@ -59,13 +59,12 @@ from services.live.obs_builder import DriverLiveState, update_from_openf1
 from services.live.openf1_api import OpenF1Client
 from services.live.race_log import (
     LOG_PREFIX,
-    PredictionRow,
-    append_prediction,
+    LiveTickContext,
+    append_live_tick,
     get_storage,
     list_races,
-    load_race,
-    race_folder_name,
-    race_year,
+    list_sessions,
+    load_session_predictions,
 )
 from services.simulator.env import F1RaceEnv
 
@@ -796,6 +795,12 @@ def _is_race_type_session(s: dict[str, Any]) -> bool:
     return s.get("session_name") in ("Race", "Sprint")
 
 
+def _session_is_finalised(session_meta: dict[str, Any]) -> bool:
+    """Return True when F1 marks the session as ended (e.g. quali complete)."""
+    status = str(session_meta.get("session_status", "")).lower()
+    return status in ("finalised", "finished", "closed", "ends")
+
+
 def _pick_relevant_race_session(sessions: list[dict[str, Any]]) -> dict[str, Any] | None:
     """Pick the race/sprint session closest in time to *now*.
 
@@ -849,7 +854,8 @@ def _render_live_tab(policy: Any, model_type: str = "ppo", model_key: str = "def
         using_signalr = True
         use_latest = True
         auto_refresh = True
-        log_enabled = False
+        s3_ok, s3_msg = _log_storage_status()
+        log_enabled = s3_ok
         _refresh_f1_timing(client)
         client, provider_label, using_signalr = _fallback_openf1_after_signalr_block(client)
     else:
@@ -891,7 +897,7 @@ def _render_live_tab(policy: Any, model_type: str = "ppo", model_key: str = "def
                 value=s3_ok,
                 disabled=not s3_ok,
                 help=(
-                    f"Persist one row per lap to s3://{s3_msg}/{LOG_PREFIX}/. "
+                    f"Persist OpenF1-style logs to s3://{s3_msg}/{LOG_PREFIX}/. "
                     "Browse them in the Prediction Log tab."
                     if s3_ok
                     else f"S3 unreachable — logging disabled. {s3_msg}"
@@ -991,15 +997,21 @@ def _render_live_tab(policy: Any, model_type: str = "ppo", model_key: str = "def
 
     if not _is_race_type_session(session_meta):
         st.markdown(f"### {gp_name}")
-        st.info(
-            f"**{session_type}** is live on the F1 timing feed. "
-            "Pitwall AI strategy recommendations activate when the **Race** or **Sprint** starts — "
-            "this page refreshes automatically."
-        )
-        if cloud:
+        if _session_is_finalised(session_meta):
+            st.info(
+                f"**{session_type}** is complete. Waiting for the **Race** — "
+                "this page refreshes automatically and strategy recommendations "
+                "will appear at lights out."
+            )
+        else:
+            st.info(
+                f"**{session_type}** is live on the F1 timing feed. "
+                "Pitwall AI strategy recommendations activate when the **Race** or **Sprint** starts — "
+                "this page refreshes automatically."
+            )
+        if cloud or auto_refresh:
             st.caption(
-                "Connected to [formula1.com/en/timing/f1-live](https://www.formula1.com/en/timing/f1-live). "
-                "Leave this tab open; recommendations will appear at lights out."
+                "Leave this tab open. No action needed until the race starts."
             )
         if auto_refresh:
             time.sleep(5)
@@ -1121,39 +1133,38 @@ def _render_live_tab(policy: Any, model_type: str = "ppo", model_key: str = "def
         best = {0: 1, 1: 2, 2: 3}.get(live_state.compound_encoded, 2)
         action, label = best, f"Pit — {['SOFT', 'MEDIUM', 'HARD'][best - 1]} ⚠"
 
-    # ── Persist prediction (append-on-lap-change) ────────────────────────────
+    # ── Persist full-field snapshot (OpenF1-style S3 layout) ─────────────────
     log_status_msg: str | None = None
-    if log_enabled and live_state.current_lap > 0:
-        last_logged_key = f"last_logged_lap_{session_key}_{driver_number}"
-        last_logged = st.session_state.get(last_logged_key, 0)
-        if live_state.current_lap > last_logged:
-            log_year = race_year(session_meta)
-            log_race = race_folder_name(session_meta)
-            try:
-                append_prediction(
-                    PredictionRow(
-                        session_key=int(session_key),
-                        session_name=str(session_type),
-                        gp_name=str(gp_name),
-                        circuit=str(circuit_name),
-                        driver_number=int(driver_number),
-                        driver_label=str(chosen_label),
-                        model_key=str(model_key),
-                        model_type=str(model_type),
-                        state=live_state,
-                        obs=obs,
-                        recommended_action=int(action),
-                        recommended_label=str(label),
-                        probs=probs,
-                        q_values=qv,
-                    ),
-                    year=log_year,
-                    race_folder=log_race,
+    if log_enabled and _is_race_type_session(session_meta) and drivers:
+        field_states_key = f"live_field_states_{session_key}"
+        if field_states_key not in st.session_state:
+            st.session_state[field_states_key] = {}
+        field_states: dict[int, DriverLiveState] = st.session_state[field_states_key]
+        try:
+            written = append_live_tick(
+                LiveTickContext(
+                    session_meta=session_meta,
+                    client=client,
+                    drivers=drivers,
+                    policy=policy,
+                    model_type=model_type,
+                    model_key=model_key,
+                    sc_active=sc_active,
+                    field_stints=field_stints,
+                    weather=weather,
+                    pit_loss_s=pit_loss_s,
+                    recommend_fn=_recommend,
+                    driver_states=field_states,
                 )
-                st.session_state[last_logged_key] = live_state.current_lap
-                log_status_msg = f"📝 Logged lap {live_state.current_lap} → {log_year}/{log_race}"
-            except Exception as exc:  # noqa: BLE001
-                log_status_msg = f"⚠️ Log write failed: {exc}"
+            )
+            st.session_state[field_states_key] = field_states
+            if written:
+                log_status_msg = (
+                    f"📝 Logged {len(drivers)} drivers → "
+                    f"{len(written)} S3 files (session_key={session_key})"
+                )
+        except Exception as exc:  # noqa: BLE001
+            log_status_msg = f"⚠️ Log write failed: {exc}"
 
     # ── Dashboard ────────────────────────────────────────────────────────────
     m1, m2, m3, m4, m5 = st.columns(5)
@@ -1370,44 +1381,51 @@ def _render_log_tab() -> None:
         return
 
     st.caption(
-        f"Persisted lap-by-lap predictions live under "
-        f"`s3://{s3_msg}/{LOG_PREFIX}/<year>/<race>/<driver>.parquet`.  "
-        "Pick a race below to inspect every driver Pitwall AI watched during it."
+        f"OpenF1-style logs under "
+        f"`s3://{s3_msg}/{LOG_PREFIX}/<endpoint>/session_key=<id>/data.parquet`.  "
+        "Each live race tick records laps, position, stints, weather, and "
+        "strategy predictions for every driver."
     )
 
-    races = list_races()
-    if not races:
-        st.info(
-            "No logs yet.  Open the **🔴 Live Race** tab during a session (with **Log to S3** "
-            "enabled) and the lap-by-lap recommendations will be captured here."
-        )
-        return
+    sessions = list_sessions()
+    if not sessions:
+        races = list_races()
+        if not races:
+            st.info(
+                "No logs yet.  Open the **🔴 Live Race** tab during a Race/Sprint "
+                "(with **Log to S3** enabled) to capture full-field data."
+            )
+            return
+        sessions = [{"session_key": r["session_key"], **r} for r in races]
 
-    # ── Year / race pickers ──────────────────────────────────────────────────
-    years = sorted({r["year"] for r in races}, reverse=True)
-    col_year, col_race = st.columns([1, 3])
-    with col_year:
-        selected_year = st.selectbox("Year", years, key="log_year")
-    year_races = [r for r in races if r["year"] == selected_year]
-    race_options = {
-        f"{r['race_folder']}  ·  {r['n_drivers']} driver(s)": r["race_folder"]
-        for r in year_races
+    session_options = {
+        (
+            f"{s.get('meeting_name') or s.get('country_name') or 'Session'} "
+            f"· {s.get('session_name', 'Race')} "
+            f"(key={s['session_key']}, {s.get('n_drivers', '?')} drivers)"
+        ): int(s["session_key"])
+        for s in sessions
     }
-    with col_race:
-        selected_race_label = st.selectbox("Race", list(race_options.keys()), key="log_race")
-    selected_race = race_options[selected_race_label]
+    selected_label = st.selectbox("Session", list(session_options.keys()), key="log_session")
+    selected_session_key = session_options[selected_label]
 
-    df = load_race(selected_year, selected_race)
+    df = load_session_predictions(selected_session_key)
+    df = df.assign(
+        timestamp_utc=df["date"],
+        lap=df["lap_number"],
+        compound_name=df.get("compound", pd.Series(dtype=str)),
+        driver_label=df["driver_number"].apply(lambda n: f"#{n}"),
+    ) if not df.empty else df
     if df.empty:
-        st.warning("Race folder exists in S3 but no rows could be loaded.")
+        st.warning("Session folder exists in S3 but no prediction rows could be loaded.")
         return
 
-    # ── Summary metrics across the whole race ────────────────────────────────
+    # ── Summary metrics across the whole session ─────────────────────────────
     n_drivers = int(df["driver_number"].nunique())
     n_rows = int(len(df))
     n_laps_max = int(df["lap"].max()) if not df.empty else 0
     n_pits = int((df["recommended_action"] > 0).sum())
-    last_row = df.sort_values("timestamp_utc").iloc[-1]
+    last_row = df.sort_values("date").iloc[-1]
     m1, m2, m3, m4, m5 = st.columns(5)
     m1.metric("Drivers", n_drivers)
     m2.metric("Total laps logged", n_rows)
@@ -1512,9 +1530,9 @@ def _render_log_tab() -> None:
 
     csv_bytes = view_df.to_csv(index=False).encode("utf-8")
     st.download_button(
-        f"⬇ Download {selected_year}/{selected_race} (CSV)",
+        f"⬇ Download session {selected_session_key} predictions (CSV)",
         data=csv_bytes,
-        file_name=f"pitwall_log_{selected_year}_{selected_race}.csv",
+        file_name=f"pitwall_predictions_{selected_session_key}.csv",
         mime="text/csv",
     )
 

@@ -41,12 +41,14 @@ class TestTimingSnapshot:
             "SessionInfo",
             {
                 "Meeting": {
-                    "Key": 9999,
+                    "Key": 1219,
                     "Name": "Monaco Grand Prix",
                     "Country": {"Name": "Monaco"},
                     "Circuit": {"ShortName": "Monaco"},
                 },
+                "Key": 9999,
                 "Name": "Race",
+                "SessionStatus": "Started",
                 "StartDate": "2026-05-25T13:00:00Z",
             },
         )
@@ -91,6 +93,7 @@ class TestTimingSnapshot:
         meta = self._sample_snapshot().session_meta()
         assert meta is not None
         assert meta["session_key"] == 9999
+        assert meta["meeting_key"] == 1219
         assert meta["meeting_name"] == "Monaco Grand Prix"
         assert meta["total_laps"] == 78
         assert meta["session_name"] == "Race"
@@ -131,6 +134,19 @@ class TestTimingSnapshot:
         stints = self._sample_snapshot().all_stints()
         assert len(stints) == 1
         assert stints[0]["driver_number"] == 44
+
+    def test_session_finalised(self) -> None:
+        snap = TimingSnapshot()
+        snap.apply_topic(
+            "SessionInfo",
+            {
+                "Meeting": {"Key": 1, "Name": "Test GP"},
+                "Name": "Qualifying",
+                "SessionStatus": "Finalised",
+                "ArchiveStatus": {"Status": "Complete"},
+            },
+        )
+        assert snap.is_session_finalised() is True
 
     def test_stints_list_format_from_free_feed(self) -> None:
         """Free formula1.com feed sends Stints as a list, not a numbered dict."""
