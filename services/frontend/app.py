@@ -415,6 +415,18 @@ def _default_live_provider() -> str:
     return os.getenv("PITWALL_LIVE_PROVIDER", "signalr").strip().lower()
 
 
+def _is_cloud_live_mode() -> bool:
+    """True when deployed for live-race-only (Streamlit Cloud secrets or env)."""
+    flag = os.getenv("PITWALL_LIVE_ONLY", "").strip().lower()
+    if flag in ("1", "true", "yes"):
+        return True
+    try:
+        secret = st.secrets.get("PITWALL_LIVE_ONLY")
+        return str(secret).strip().lower() in ("1", "true", "yes")
+    except Exception:  # noqa: BLE001
+        return False
+
+
 @st.cache_resource(show_spinner=False)
 def _f1_signalr_client() -> F1LiveTimingClient:
     token = resolve_subscription_token()
@@ -810,53 +822,63 @@ def _format_gp_name(session_meta: dict[str, Any]) -> str:
 
 def _render_live_tab(policy: Any, model_type: str = "ppo", model_key: str = "default") -> None:
     """Render the Live Race tab — real-time strategy recommendations."""
-    provider_choice = st.selectbox(
-        "Data source",
-        options=["auto", "signalr", "openf1"],
-        format_func=lambda x: {
-            "auto": "Auto (F1.com → OpenF1 fallback)",
-            "signalr": "F1.com live timing",
-            "openf1": "OpenF1 API",
-        }[x],
-        index={"auto": 0, "signalr": 1, "openf1": 2}.get(_default_live_provider(), 0),
-        key="live_provider_choice",
-    )
-    client, provider_label = _resolve_live_client(provider_choice)
-    using_signalr = _client_is_signalr(client)
+    cloud = _is_cloud_live_mode()
 
-    if using_signalr:
+    if cloud:
+        client, provider_label = _resolve_live_client("signalr")
+        using_signalr = True
+        use_latest = True
+        auto_refresh = True
+        log_enabled = False
         _refresh_f1_timing(client)
+    else:
+        provider_choice = st.selectbox(
+            "Data source",
+            options=["auto", "signalr", "openf1"],
+            format_func=lambda x: {
+                "auto": "Auto (F1.com → OpenF1 fallback)",
+                "signalr": "F1.com live timing",
+                "openf1": "OpenF1 API",
+            }[x],
+            index={"auto": 0, "signalr": 1, "openf1": 2}.get(_default_live_provider(), 0),
+            key="live_provider_choice",
+        )
+        client, provider_label = _resolve_live_client(provider_choice)
+        using_signalr = _client_is_signalr(client)
 
-    # ── Session picker ───────────────────────────────────────────────────────
-    col_sess, col_refresh, col_log = st.columns([3, 1, 1])
-    with col_sess:
-        use_latest = st.checkbox(
-            "Track latest session",
-            value=True,
-            disabled=using_signalr,
-            help="Always enabled for F1.com timing — session comes from the live feed.",
-        )
-    with col_refresh:
-        auto_refresh = st.toggle("Auto-refresh (5 s)", value=False)
-    s3_ok, s3_msg = _log_storage_status()
-    with col_log:
-        log_enabled = st.toggle(
-            "Log to S3",
-            value=s3_ok,
-            disabled=not s3_ok,
-            help=(
-                f"Persist one row per lap to s3://{s3_msg}/{LOG_PREFIX}/. "
-                "Browse them in the Prediction Log tab."
-                if s3_ok
-                else f"S3 unreachable — logging disabled. {s3_msg}"
-            ),
-        )
-    if not s3_ok:
-        st.warning(
-            f"⚠️ S3 storage unreachable, prediction logging is disabled.  "
-            f"Set `PITWALL_STORAGE_BACKEND=s3`, `PITWALL_AWS_S3_BUCKET`, and AWS credentials "
-            f"in your environment / Streamlit secrets to enable it.  Error: `{s3_msg}`"
-        )
+        if using_signalr:
+            _refresh_f1_timing(client)
+
+        # ── Session picker ───────────────────────────────────────────────────
+        col_sess, col_refresh, col_log = st.columns([3, 1, 1])
+        with col_sess:
+            use_latest = st.checkbox(
+                "Track latest session",
+                value=True,
+                disabled=using_signalr,
+                help="Always enabled for F1.com timing — session comes from the live feed.",
+            )
+        with col_refresh:
+            auto_refresh = st.toggle("Auto-refresh (5 s)", value=False)
+        s3_ok, s3_msg = _log_storage_status()
+        with col_log:
+            log_enabled = st.toggle(
+                "Log to S3",
+                value=s3_ok,
+                disabled=not s3_ok,
+                help=(
+                    f"Persist one row per lap to s3://{s3_msg}/{LOG_PREFIX}/. "
+                    "Browse them in the Prediction Log tab."
+                    if s3_ok
+                    else f"S3 unreachable — logging disabled. {s3_msg}"
+                ),
+            )
+        if not s3_ok:
+            st.warning(
+                f"⚠️ S3 storage unreachable, prediction logging is disabled.  "
+                f"Set `PITWALL_STORAGE_BACKEND=s3`, `PITWALL_AWS_S3_BUCKET`, and AWS credentials "
+                f"in your environment / Streamlit secrets to enable it.  Error: `{s3_msg}`"
+            )
 
     if use_latest or using_signalr:
         year = datetime.now(timezone.utc).year
@@ -943,9 +965,28 @@ def _render_live_tab(policy: Any, model_type: str = "ppo", model_key: str = "def
     circuit_name = session_meta.get("circuit_short_name", "")
     pit_loss_s = _PIT_LOSS_BY_CIRCUIT.get(circuit_name, 22.0)
 
-    st.markdown(f"### 🔴 {gp_name} — {session_type}")
+    if not _is_race_type_session(session_meta):
+        st.markdown(f"### {gp_name}")
+        st.info(
+            f"**{session_type}** is live on the F1 timing feed. "
+            "Pitwall AI strategy recommendations activate when the **Race** or **Sprint** starts — "
+            "this page refreshes automatically."
+        )
+        if cloud:
+            st.caption(
+                "Connected to [formula1.com/en/timing/f1-live](https://www.formula1.com/en/timing/f1-live). "
+                "Leave this tab open; recommendations will appear at lights out."
+            )
+        if auto_refresh:
+            time.sleep(5)
+            st.rerun()
+        elif st.button("🔄 Check again"):
+            st.rerun()
+        return
+
+    st.markdown(f"### 🔴 LIVE — {gp_name} — {session_type}")
     if total_laps == 0:
-        st.warning("Session has no lap data yet (qualifying / practice / race not started).")
+        st.warning("Race has not started yet — waiting for lap data.")
 
     # ── Driver picker ────────────────────────────────────────────────────────
     try:
@@ -1553,6 +1594,16 @@ def main() -> None:
         if (seq_tire_assets is not None and SequenceTireWrapper is not None)
         else tire_model
     )
+
+    if _is_cloud_live_mode():
+        st.title("🔴 Pitwall AI — Live Race")
+        st.caption(
+            "Real-time pit strategy from the free "
+            "[F1.com live timing feed](https://www.formula1.com/en/timing/f1-live). "
+            "Recommendations appear automatically when the Race or Sprint is live."
+        )
+        _render_live_tab(policy, model_type, selected_model_key)
+        return
 
     st.info(
         "**📊 Race Replay** — replay any race from 2022–2025 and see what Pitwall AI would have "

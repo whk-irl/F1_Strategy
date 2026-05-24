@@ -46,6 +46,7 @@ dependencies = [
     "python-dotenv>=1.0",
     # Live timing
     "requests>=2.31",
+    "signalrcore>=1.0.2",
     # Utilities
     "scipy>=1.13",
     "scikit-learn>=1.4",
