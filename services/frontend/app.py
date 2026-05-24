@@ -410,8 +410,47 @@ def _show_openf1_auth_required() -> None:
     )
 
 
+def _is_streamlit_hosted() -> bool:
+    """True when running on Streamlit Community Cloud (datacenter — F1.com blocks 403)."""
+    override = os.getenv("PITWALL_PREFER_OPENF1", "").strip().lower()
+    if override in ("1", "true", "yes"):
+        return True
+    if override in ("0", "false", "no"):
+        return False
+    cwd = Path.cwd().as_posix()
+    if "/mount/src" in cwd:
+        return True
+    try:
+        url = str(getattr(st.context, "url", "") or "")
+        if "share.streamlit.io" in url or ".streamlit.app" in url:
+            return True
+    except Exception:  # noqa: BLE001
+        pass
+    return False
+
+
+def _live_provider_from_config() -> str:
+    """Explicit provider from env or Streamlit secrets (may be empty)."""
+    explicit = os.getenv("PITWALL_LIVE_PROVIDER", "").strip().lower()
+    if explicit:
+        return explicit
+    try:
+        secret = st.secrets.get("PITWALL_LIVE_PROVIDER")
+        if secret is not None:
+            return str(secret).strip().lower()
+    except Exception:  # noqa: BLE001
+        pass
+    return ""
+
+
 def _default_live_provider() -> str:
-    return os.getenv("PITWALL_LIVE_PROVIDER", "signalr").strip().lower()
+    explicit = _live_provider_from_config()
+    if _is_streamlit_hosted():
+        # F1.com negotiate always 403 from datacenter IPs; signalr/auto in secrets won't work.
+        if explicit in ("", "signalr", "auto"):
+            return "openf1"
+        return explicit
+    return explicit or "signalr"
 
 
 def _is_cloud_live_mode() -> bool:
@@ -439,12 +478,13 @@ def _client_is_signalr(client: Any) -> bool:
 def _resolve_live_client(provider_choice: str) -> tuple[Any, str]:
     """Return ``(client, label)`` for the selected live data provider."""
     choice = provider_choice.strip().lower()
-    if choice == "openf1":
+    if (
+        choice == "openf1"
+        or st.session_state.get("live_force_openf1")
+        or (_is_streamlit_hosted() and choice in ("auto", "signalr", ""))
+    ):
         return _openf1_client(), "OpenF1"
 
-    # signalr and auto both use the free F1.com feed.  Do not fall back to
-    # OpenF1 on cold start — SignalR needs a few seconds to connect and would
-    # otherwise trigger the OpenF1 auth error on every first load.
     signalr = _f1_signalr_client()
     if choice == "auto":
         return signalr, "F1 Live Timing (auto)"
@@ -462,12 +502,15 @@ def _show_f1_waiting_hint(client: F1LiveTimingClient) -> None:
         st.caption(f"Last connection error: `{err}`")
 
 
-def _refresh_f1_timing(client: F1LiveTimingClient) -> None:
+def _refresh_f1_timing(client: F1LiveTimingClient, *, show_spinner: bool = True) -> None:
     """Pull a fresh snapshot from the F1 SignalR feed (sync, Streamlit-safe)."""
-    with st.spinner("Fetching F1 live timing…"):
+    if show_spinner:
+        with st.spinner("Fetching F1 live timing…"):
+            client.refresh(timeout=4.0)
+    else:
         client.refresh(timeout=4.0)
     err = client.last_error()
-    if err and not client.has_data():
+    if err and not client.has_data() and not _signalr_blocked(client):
         st.error(f"Could not reach F1 live timing feed: `{err}`")
 
 
@@ -483,10 +526,18 @@ def _fallback_openf1_after_signalr_block(
     """Switch to OpenF1 when F1.com timing is blocked from the host."""
     if not _signalr_blocked(client):
         return client, "F1 Live Timing", True
-    st.warning(
-        "F1.com timing is blocked from this server (common on Streamlit Cloud). "
-        "Falling back to OpenF1…"
-    )
+    if not st.session_state.get("_openf1_fallback_notified"):
+        st.info(
+            "F1.com timing is not reachable from Streamlit Cloud (their CDN blocks "
+            "datacenter servers). Using **OpenF1** instead."
+        )
+        if not _openf1_key_is_configured():
+            st.error(
+                "Live sessions require an OpenF1 API key on Streamlit Cloud. "
+                "Add `PITWALL_OPENF1_API_KEY` in **Manage app → Settings → Secrets**, "
+                "then reboot the app. Get a key at [openf1.org](https://openf1.org/)."
+            )
+        st.session_state["_openf1_fallback_notified"] = True
     openf1 = _openf1_client()
     return openf1, "OpenF1", False
 
@@ -847,17 +898,25 @@ def _format_gp_name(session_meta: dict[str, Any]) -> str:
 
 def _render_live_tab(policy: Any, model_type: str = "ppo", model_key: str = "default") -> None:
     """Render the Live Race tab — real-time strategy recommendations."""
+    if _is_streamlit_hosted() and _live_provider_from_config() in ("", "signalr", "auto"):
+        st.session_state["live_force_openf1"] = True
+
     cloud = _is_cloud_live_mode()
 
     if cloud:
-        client, provider_label = _resolve_live_client("signalr")
-        using_signalr = True
+        # F1.com SignalR returns 403 from Streamlit Cloud IPs — use OpenF1 directly.
+        client, provider_label = _resolve_live_client("openf1")
+        using_signalr = False
         use_latest = True
         auto_refresh = True
         s3_ok, s3_msg = _log_storage_status()
         log_enabled = s3_ok
-        _refresh_f1_timing(client)
-        client, provider_label, using_signalr = _fallback_openf1_after_signalr_block(client)
+        if not _openf1_key_is_configured():
+            st.info(
+                "Streamlit Cloud uses the **OpenF1 API** for live timing. "
+                "Add `PITWALL_OPENF1_API_KEY` in app secrets before race day "
+                "(required during live sessions)."
+            )
     else:
         provider_choice = st.selectbox(
             "Data source",
@@ -875,9 +934,9 @@ def _render_live_tab(policy: Any, model_type: str = "ppo", model_key: str = "def
 
         if using_signalr:
             _refresh_f1_timing(client)
-            client, provider_label, using_signalr = _fallback_openf1_after_signalr_block(
-                client
-            )
+            client, provider_label, using_signalr = _fallback_openf1_after_signalr_block(client)
+            if not using_signalr:
+                st.session_state["live_force_openf1"] = True
 
         # ── Session picker ───────────────────────────────────────────────────
         col_sess, col_refresh, col_log = st.columns([3, 1, 1])
