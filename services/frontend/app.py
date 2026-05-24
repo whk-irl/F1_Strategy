@@ -472,6 +472,26 @@ def _refresh_f1_timing(client: F1LiveTimingClient) -> None:
         st.error(f"Could not reach F1 live timing feed: `{err}`")
 
 
+def _signalr_blocked(client: F1LiveTimingClient) -> bool:
+    """Return True when F1's CDN rejected the server-side negotiate (403)."""
+    err = client.last_error() or ""
+    return not client.has_data() and ("403" in err or "Forbidden" in err)
+
+
+def _fallback_openf1_after_signalr_block(
+    client: F1LiveTimingClient,
+) -> tuple[Any, str, bool]:
+    """Switch to OpenF1 when F1.com timing is blocked from the host."""
+    if not _signalr_blocked(client):
+        return client, "F1 Live Timing", True
+    st.warning(
+        "F1.com timing is blocked from this server (common on Streamlit Cloud). "
+        "Falling back to OpenF1…"
+    )
+    openf1 = _openf1_client()
+    return openf1, "OpenF1", False
+
+
 @st.cache_resource(show_spinner="Connecting to S3…")
 def _log_storage_status() -> tuple[bool, str]:
     """Probe S3/MinIO for log storage. Returns (ok, message).
@@ -831,6 +851,7 @@ def _render_live_tab(policy: Any, model_type: str = "ppo", model_key: str = "def
         auto_refresh = True
         log_enabled = False
         _refresh_f1_timing(client)
+        client, provider_label, using_signalr = _fallback_openf1_after_signalr_block(client)
     else:
         provider_choice = st.selectbox(
             "Data source",
@@ -848,6 +869,9 @@ def _render_live_tab(policy: Any, model_type: str = "ppo", model_key: str = "def
 
         if using_signalr:
             _refresh_f1_timing(client)
+            client, provider_label, using_signalr = _fallback_openf1_after_signalr_block(
+                client
+            )
 
         # ── Session picker ───────────────────────────────────────────────────
         col_sess, col_refresh, col_log = st.columns([3, 1, 1])

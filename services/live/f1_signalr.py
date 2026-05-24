@@ -51,6 +51,48 @@ _TOPICS = [
     "TopThree",
 ]
 
+# F1's CDN/WAF expects browser-like headers (Streamlit Cloud gets 403 without these).
+_F1_BROWSER_HEADERS: dict[str, str] = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    ),
+    "Origin": "https://www.formula1.com",
+    "Referer": "https://www.formula1.com/en/timing/f1-live",
+    "Accept": "*/*",
+    "Accept-Language": "en-US,en;q=0.9",
+}
+
+
+def _acquire_f1_cookies(session: requests.Session) -> dict[str, str]:
+    """Return headers with AWSALBCORS cookie for SignalR negotiate.
+
+    Mirrors FastF1's pre-negotiate step.  The cookie is often returned even
+    when the HTTP status is not 200, so we never raise on status codes here.
+    """
+    headers = dict(_F1_BROWSER_HEADERS)
+    for method, kwargs in (
+        (session.post, {"json": {}}),
+        (session.options, {}),
+    ):
+        try:
+            resp = method(
+                _NEGOTIATE_URL,
+                headers={**headers, "Content-Type": "application/json"},
+                timeout=10,
+                **kwargs,
+            )
+        except requests.RequestException:
+            continue
+        cors = resp.cookies.get("AWSALBCORS")
+        if cors:
+            return {**headers, "Cookie": f"AWSALBCORS={cors}"}
+
+    cors = session.cookies.get("AWSALBCORS")
+    if cors:
+        return {**headers, "Cookie": f"AWSALBCORS={cors}"}
+    return headers
+
 
 def resolve_subscription_token(explicit: str | None = None) -> str:
     """Return an F1 subscription token from env, explicit arg, or FastF1 cache."""
@@ -109,16 +151,8 @@ class F1LiveTimingClient:
         """No-op kept for API compatibility — call :meth:`refresh` instead."""
 
     def _connect_and_collect(self, collect_s: float) -> None:
-        headers: dict[str, str] = {}
-        r = requests.post(
-            _NEGOTIATE_URL,
-            headers={"Content-Type": "application/json"},
-            json={},
-            timeout=10,
-        )
-        r.raise_for_status()
-        if "AWSALBCORS" in r.cookies:
-            headers["Cookie"] = f"AWSALBCORS={r.cookies['AWSALBCORS']}"
+        http = requests.Session()
+        headers = _acquire_f1_cookies(http)
 
         token = self._token
         msg_count = 0
