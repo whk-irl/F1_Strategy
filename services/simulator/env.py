@@ -63,6 +63,7 @@ except ImportError as exc:  # pragma: no cover
 
 from ml.models.safety_car.predict import predict_sc_probability
 
+from services.simulator.circuits import legacy_reference
 from services.simulator.lap_simulator import (
     PIT_LOSS_S,
     driver_baseline_delta,
@@ -81,7 +82,7 @@ _ACTION_TO_COMPOUND: dict[int, int] = {1: 0, 2: 1, 3: 2}
 #   same (driver baseline_delta, round_num) combination is seen again.
 # ---------------------------------------------------------------------------
 _RACE_ARRAY_CACHE: dict[tuple[Any, ...], dict[str, Any]] = {}
-_TIRE_TABLE_CACHE: dict[float, np.ndarray] = {}
+_TIRE_TABLE_CACHE: dict[tuple[int, float], np.ndarray] = {}
 
 # Tire table quantisation — race_progress binned into 25 steps of 0.04 each.
 _RP_BINS: int = 25
@@ -249,7 +250,7 @@ def _synthetic_deg(
     return penalty
 
 
-class F1RaceEnv(gym.Env[np.ndarray, np.ndarray]):
+class F1RaceEnv(gym.Env[np.ndarray, int]):
     """Single-driver F1 race strategy Gymnasium environment.
 
     Args:
@@ -283,6 +284,7 @@ class F1RaceEnv(gym.Env[np.ndarray, np.ndarray]):
         self._tire_model = tire_model
         self._sc_model = sc_model
         self._pit_loss_s = pit_loss_s
+        self._default_pit_loss_s = pit_loss_s
         self._noise_std = noise_std
         # When True, step() uses actual recorded lap times instead of simulating,
         # keeping cumulative race times aligned with the real race data.
@@ -321,7 +323,11 @@ class F1RaceEnv(gym.Env[np.ndarray, np.ndarray]):
         self._baseline_delta: float = driver_baseline_delta(self._agent_df)
 
         round_num = int(race_df["round_number"].iloc[0]) if "round_number" in race_df.columns else 0
-        self._pit_loss_s = _PIT_LOSS_BY_ROUND.get(round_num, self._pit_loss_s)
+        if "circuit_reference_round" in race_df:
+            round_num = int(race_df["circuit_reference_round"].iloc[0])
+        elif "year" in race_df:
+            round_num = legacy_reference(int(race_df["year"].iloc[0]), round_num)
+        self._pit_loss_s = _PIT_LOSS_BY_ROUND.get(round_num, self._default_pit_loss_s)
 
         # Circuit + temperature calibrated degradation parameters.
         track_temp = self._estimate_track_temp(race_df)
@@ -334,10 +340,14 @@ class F1RaceEnv(gym.Env[np.ndarray, np.ndarray]):
         # (compound × tyre_life × race_progress × is_fresh) grid.
         # All subsequent step() calls use an O(1) numpy index lookup
         # instead of creating a DataFrame and invoking LightGBM pyfunc.
-        tire_cache_key = round(self._baseline_delta, 3)
-        if tire_cache_key not in _TIRE_TABLE_CACHE:
+        tire_cache_key = (id(self._tire_model), round(self._baseline_delta, 3))
+        if self._replay_mode:
+            self._tire_table = np.zeros((6, _MAX_TYRE_LIFE, _RP_BINS, 2), dtype=np.float32)
+        elif tire_cache_key not in _TIRE_TABLE_CACHE:
             _TIRE_TABLE_CACHE[tire_cache_key] = self._build_tire_table()
-        self._tire_table: np.ndarray = _TIRE_TABLE_CACHE[tire_cache_key]
+            self._tire_table = _TIRE_TABLE_CACHE[tire_cache_key]
+        else:
+            self._tire_table = _TIRE_TABLE_CACHE[tire_cache_key]
 
         field_df = race_df[~agent_mask]
         self._build_arrays(field_df, race_df)
@@ -345,7 +355,7 @@ class F1RaceEnv(gym.Env[np.ndarray, np.ndarray]):
     @staticmethod
     def _estimate_track_temp(race_df: pd.DataFrame) -> float | None:
         """Extract mean track temperature from gold data if the column exists."""
-        for col in ("track_temp", "TrackTemp", "track_temperature"):
+        for col in ("track_temp_c", "track_temp", "TrackTemp", "track_temperature"):
             if col in race_df.columns:
                 vals = pd.to_numeric(race_df[col], errors="coerce").dropna()
                 if len(vals):
@@ -402,6 +412,20 @@ class F1RaceEnv(gym.Env[np.ndarray, np.ndarray]):
         Arrays are indexed [driver_index, lap_number].  Lap 0 is unused;
         missing laps (retired drivers) are filled with sentinel values.
         """
+        cache_key = (id(race_df), str(self._driver_number))
+        array_names = (
+            "_field_drivers",
+            "_field_cum_arr",
+            "_field_tyre_age_arr",
+            "_field_pitted_arr",
+            "_wet_fraction_arr",
+            "_track_status_arr",
+        )
+        cached = _RACE_ARRAY_CACHE.get(cache_key)
+        if cached is not None and cached["source"] is race_df:
+            for name in array_names:
+                setattr(self, name, cached[name])
+            return
         drivers = sorted(field_df["driver_number"].unique())
         self._field_drivers = drivers
         drv_to_idx = {drv: i for i, drv in enumerate(drivers)}
@@ -453,6 +477,13 @@ class F1RaceEnv(gym.Env[np.ndarray, np.ndarray]):
                 val = row.get("track_status_encoded")
                 if pd.notna(val) and lap <= total:
                     self._track_status_arr[lap] = int(val)
+        if len(_RACE_ARRAY_CACHE) >= 2048:
+            _RACE_ARRAY_CACHE.pop(next(iter(_RACE_ARRAY_CACHE)))
+        # Retaining source identity prevents Python id reuse from mixing event arrays.
+        _RACE_ARRAY_CACHE[cache_key] = {
+            "source": race_df,
+            **{name: getattr(self, name) for name in array_names},
+        }
 
     # ------------------------------------------------------------------
     # Gymnasium API
@@ -494,6 +525,7 @@ class F1RaceEnv(gym.Env[np.ndarray, np.ndarray]):
         self._tyre_life: int = 1
         self._is_fresh: bool = True
         self._stops_taken: int = 0
+        self._used_compounds: set[int] = {start_compound}
         self._cumulative_time_s: float = 0.0
         self._sc_laps_since_last: float = 30.0
         self._position: int = self._get_start_position()
@@ -513,7 +545,7 @@ class F1RaceEnv(gym.Env[np.ndarray, np.ndarray]):
 
         return self._build_obs(), {}
 
-    def step(self, action: int) -> tuple[np.ndarray, float, bool, bool, dict[str, Any]]:  # type: ignore[override]
+    def step(self, action: int) -> tuple[np.ndarray, float, bool, bool, dict[str, Any]]:
         """Advance one lap.
 
         Args:
@@ -528,17 +560,14 @@ class F1RaceEnv(gym.Env[np.ndarray, np.ndarray]):
         pre_pit_compound = self._compound
         pre_pit_tyre_life = self._tyre_life
 
-        if is_pit:
-            self._compound = _ACTION_TO_COMPOUND[action]
-            self._tyre_life = 1
-            self._is_fresh = True
-            self._stops_taken += 1
+        if not self.action_space.contains(action):
+            raise ValueError(f"Invalid action {action}")
 
         race_prog = self._lap / self._total_laps
         track_status = self._read_track_status(self._lap)
         self._last_track_status = track_status
 
-        if track_status >= 2:
+        if track_status in (2, 3):
             self._sc_laps_since_last = 0.0
         else:
             self._sc_laps_since_last = min(self._sc_laps_since_last + 1.0, 50.0)
@@ -581,12 +610,20 @@ class F1RaceEnv(gym.Env[np.ndarray, np.ndarray]):
             noise = float(self.np_random.normal(0.0, self._noise_std))
             sim_lap = field_med + self._baseline_delta + blended_delta + noise
 
-        if is_pit:
-            sim_lap += self._pit_loss_s
+        if is_pit and not self._replay_mode:
+            # The recorded in-lap already contains pit entry loss in replay mode.
+            sim_lap += self._pit_loss_s * (0.6 if track_status in (2, 3) else 1.0)
 
         self._cumulative_time_s += sim_lap
         self._tyre_life += 1
         self._is_fresh = False
+        if is_pit:
+            # Stops occur at the end of the in-lap; fresh tyres apply next lap.
+            self._compound = _ACTION_TO_COMPOUND[action]
+            self._tyre_life = 1
+            self._is_fresh = True
+            self._stops_taken += 1
+            self._used_compounds.add(self._compound)
 
         prev_position = self._position
         self._position = self._compute_position(self._lap)
@@ -599,7 +636,7 @@ class F1RaceEnv(gym.Env[np.ndarray, np.ndarray]):
         # Reward: penalise slow laps, reward position gains, bonus free stops.
         position_norm = (self._n_drivers - self._position) / max(self._n_drivers - 1, 1)
         position_change = prev_position - self._position  # positive = gained places
-        free_stop_bonus = 5.0 if (is_pit and track_status >= 2) else 0.0
+        free_stop_bonus = 0.0
 
         # Cliff penalty: penalise laps driven past the compound's optimal stint window.
         # Scaled by laps remaining so urgency fades toward end of race — prevents the
@@ -618,7 +655,7 @@ class F1RaceEnv(gym.Env[np.ndarray, np.ndarray]):
         # free stops — early pitting under yellow is always correct.
         _MIN_STINT_LAPS = 8
         underutil_penalty = 0.0
-        if is_pit and track_status < 2:
+        if is_pit and track_status not in (2, 3):
             unused = max(0, _MIN_STINT_LAPS - pre_pit_tyre_life)
             underutil_penalty = -unused * 0.5  # up to −3.5 on lap 1
 
@@ -653,8 +690,8 @@ class F1RaceEnv(gym.Env[np.ndarray, np.ndarray]):
             "lap": self._lap - 1,
             "position": self._position,
             "sim_lap_time_s": round(sim_lap, 3),
-            "compound": self._compound,
-            "tyre_life": self._tyre_life - 1,
+            "compound": pre_pit_compound,
+            "tyre_life": pre_pit_tyre_life,
             "sc_probability": round(self._last_sc_prob, 3),
             "gap_ahead_s": round(self._gap_ahead_s, 1),
             "gap_behind_s": round(self._gap_behind_s, 1),
@@ -761,7 +798,7 @@ class F1RaceEnv(gym.Env[np.ndarray, np.ndarray]):
                 # Strategic signals
                 self._undercut_threat,
                 self._overcut_opportunity,
-                float(self._last_track_status >= 2),  # free stop available
+                float(self._last_track_status in (2, 3)),  # SC/VSC pit opportunity
                 self._cars_lose_if_pit / max(self._n_drivers - 1, 1),
                 float(np.clip(self._pit_loss_s / 30.0, 0.0, 1.5)),
                 # Safety car

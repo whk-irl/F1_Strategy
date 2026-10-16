@@ -105,10 +105,10 @@ def _build_sc_label(df: pd.DataFrame, horizon: int = SC_HORIZON) -> pd.DataFrame
     race_status["is_sc_next"] = False
     for _grp_keys, grp in race_status.groupby(["year", "round_number"]):
         idx = grp.index
-        sc_flags = np.asarray((grp["track_status_encoded"] >= 2).values, dtype=bool)
+        sc_flags = np.asarray(grp["track_status_encoded"].isin([2, 3]).values, dtype=bool)
         rolling = np.zeros(len(sc_flags), dtype=bool)
         for i in range(len(sc_flags)):
-            rolling[i] = sc_flags[i : i + horizon].any()
+            rolling[i] = sc_flags[i + 1 : i + horizon + 1].any()
         race_status.loc[idx, "is_sc_next"] = rolling
 
     out = out.merge(

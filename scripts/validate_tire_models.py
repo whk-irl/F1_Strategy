@@ -12,19 +12,18 @@ import warnings
 warnings.filterwarnings("ignore")
 os.environ.setdefault("PITWALL_STORAGE_BACKEND", "local")
 
+import mlflow
+import mlflow.pyfunc
 import numpy as np
 import pandas as pd
 import torch
-import mlflow
-import mlflow.pyfunc
-from sklearn.metrics import mean_absolute_error, r2_score
-
 from ml.models._loader import load_gold_seasons
+from ml.models.tire_degradation.predict_sequence import load_sequence_model
 from ml.models.tire_degradation.sequence_dataset import (
     FEATURE_COLS,
     StintSequenceDataset,
 )
-from ml.models.tire_degradation.predict_sequence import load_sequence_model
+from sklearn.metrics import mean_absolute_error, r2_score
 
 VAL_ROUNDS = [5, 10, 15, 20]
 SEASONS = [2022, 2023, 2024, 2025]
@@ -50,13 +49,11 @@ print(f"  {len(df):,} total laps")
 _, train_norm_stats, _ = load_sequence_model("tcn_gru")
 
 # Build validation dataset using the same held-out rounds as training.
-val_ds = StintSequenceDataset(
-    df, norm_stats=train_norm_stats, val_rounds=VAL_ROUNDS, is_val=True
-)
+val_ds = StintSequenceDataset(df, norm_stats=train_norm_stats, val_rounds=VAL_ROUNDS, is_val=True)
 print(f"  {len(val_ds):,} validation windows  (rounds {VAL_ROUNDS}, all seasons)")
 
-all_x: np.ndarray = torch.stack(val_ds._xs).numpy()   # (N, seq_len, 8)
-all_y: np.ndarray = torch.stack(val_ds._ys).numpy()   # (N,)
+all_x: np.ndarray = torch.stack(val_ds._xs).numpy()  # (N, seq_len, 8)
+all_y: np.ndarray = torch.stack(val_ds._ys).numpy()  # (N,)
 norm = val_ds.norm_stats
 
 print(f"\n  target stats — mean={all_y.mean():.3f}s  std={all_y.std():.3f}s\n")

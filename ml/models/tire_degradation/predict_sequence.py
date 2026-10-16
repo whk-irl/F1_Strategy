@@ -40,14 +40,14 @@ if not (_REPO_ROOT / "models_baked").exists():
 
 # Re-export SequenceTireWrapper from the dedicated wrapper module so callers
 # that use ``from predict_sequence import SequenceTireWrapper`` still work.
-from ml.models.tire_degradation.wrapper import SequenceTireWrapper  # noqa: E402
+from ml.models.tire_degradation.wrapper import SequenceTireWrapper
 
 __all__ = [
     "SequenceTireWrapper",
     "load_sequence_model",
     "predict_lap_time_delta",
-    "predict_stint_from_history",
     "predict_stint_degradation",
+    "predict_stint_from_history",
 ]
 
 

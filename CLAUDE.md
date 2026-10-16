@@ -11,7 +11,10 @@ Pitwall AI is an open-source F1 race strategy engine. Given live race state, it 
 
 The architecture combines a learned race simulator (Gym environment) with a reinforcement-learning policy (PPO), trained on historical F1 data from FastF1 (2018+).
 
-This is a portfolio / research project. **Not** a real-time live timing tool — it simulates "live" decisions over recorded race state. See `docs/scope.md` for explicit non-goals.
+This is a portfolio / research project. The model experiments simulate decisions
+over recorded race state. The user-authorized Race Center (ADR 0006) additionally
+shows recorded-position replay and delayed OpenF1 live timing; it is not an official
+race operations system. The original model explorer remains in Strategy Lab.
 
 ## Target audience for the codebase
 
@@ -139,7 +142,18 @@ Gold (ML-ready feature tables, registered in Feast)
 
 ## Current phase
 
-See README "Roadmap" section. Update the checkboxes as phases complete.
+The full local lifecycle is `services.ingestion.acquire` followed by
+`ml.pipelines.train --config configs/training.local.json`. See ADR 0005 and the staged
+training guide. The candidate uses behavioral cloning, four-frame PPO pretraining,
+and newer-event fine-tuning. Three compound-use flags augment each 21-value frame.
+Keep the 96-value candidate separate from legacy baked models. Both simulator gates
+must pass before RL. Never select checkpoints on test events or fit normalization
+on validation/test data. Generated data and weights stay under ignored data/runs paths.
+
+Race Center is the default frontend workspace. Keep its model imports lazy. Actual
+OpenF1 coordinates drive the map; never substitute invented car motion or telemetry.
+Keep API credentials server-side, distinguish replay/live/stale states, and preserve
+as-of timing semantics. See ADR 0006 and `docs/guides/race-center.md`.
 
 ## When making changes, prefer
 

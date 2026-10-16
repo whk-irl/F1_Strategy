@@ -41,7 +41,7 @@ dependencies = [
     "fastapi>=0.110",
     "uvicorn[standard]>=0.29",
     # Frontend
-    "streamlit>=1.33",
+    "streamlit>=1.37",
     "plotly>=5.20",
     "python-dotenv>=1.0",
     # Live timing

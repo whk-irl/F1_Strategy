@@ -71,13 +71,17 @@ class FastF1Client:
         """
         try:
             session = fastf1.get_session(year, round_number, session_type)
-            session.load(laps=True, telemetry=False, weather=False, messages=False)
+            session.load(laps=True, telemetry=False, weather=True, messages=False)
         except Exception as exc:
             raise FastF1ClientError(
                 f"Failed to load session {year} R{round_number} {session_type}: {exc}"
             ) from exc
 
-        laps: pd.DataFrame = pd.DataFrame(session.laps)
+        from .acquire import join_weather
+
+        laps = join_weather(pd.DataFrame(session.laps), pd.DataFrame(session.weather_data))
+        laps.attrs["total_laps"] = int(session.total_laps or laps["LapNumber"].max())
+        laps.attrs["session_start"] = str(session.t0_date)
         logger.info(
             "Loaded %d laps for %d R%d %s",
             len(laps),

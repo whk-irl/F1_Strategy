@@ -90,7 +90,7 @@ class StrategyPolicyConfig(BaseSettings):
 # ---------------------------------------------------------------------------
 
 
-class MultiRaceEnv(gym.Env[np.ndarray, np.ndarray]):
+class MultiRaceEnv(gym.Env[np.ndarray, int]):
     """F1RaceEnv wrapper that samples a random (race, driver) pair on each reset.
 
     Sampling diverse races and driver baselines is the primary regulariser
@@ -132,7 +132,7 @@ class MultiRaceEnv(gym.Env[np.ndarray, np.ndarray]):
             options={"race_df": race_df, "driver_number": driver},
         )
 
-    def step(self, action: int) -> tuple[np.ndarray, float, bool, bool, dict[str, Any]]:  # type: ignore[override]
+    def step(self, action: int) -> tuple[np.ndarray, float, bool, bool, dict[str, Any]]:
         return self._inner.step(action)
 
 

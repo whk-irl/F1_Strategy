@@ -122,7 +122,7 @@ class StrategyDQNConfig(BaseSettings):
 # ---------------------------------------------------------------------------
 
 
-class MultiRaceEnv(gym.Env[npt.NDArray[Any], npt.NDArray[Any]]):
+class MultiRaceEnv(gym.Env[npt.NDArray[Any], int]):
     """F1RaceEnv wrapper that samples a random (race, driver) pair on each reset."""
 
     metadata: ClassVar[dict[str, Any]] = {"render_modes": []}  # type: ignore[misc]
@@ -158,7 +158,7 @@ class MultiRaceEnv(gym.Env[npt.NDArray[Any], npt.NDArray[Any]]):
             options={"race_df": race_df, "driver_number": driver},
         )
 
-    def step(self, action: int) -> tuple[npt.NDArray[Any], float, bool, bool, dict[str, Any]]:  # type: ignore[override]
+    def step(self, action: int) -> tuple[npt.NDArray[Any], float, bool, bool, dict[str, Any]]:
         return self._inner.step(action)
 
 
