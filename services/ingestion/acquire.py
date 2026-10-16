@@ -27,7 +27,7 @@ from services.ingestion.transforms import bronze_to_silver, silver_to_gold
 from services.simulator.circuits import LOCATION_REFERENCE
 
 LOGGER = logging.getLogger(__name__)
-FEATURE_VERSION = "causal-v2"
+FEATURE_VERSION = "causal-v3"
 
 
 class AcquisitionConfig(BaseModel):

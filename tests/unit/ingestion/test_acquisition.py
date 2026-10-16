@@ -108,6 +108,13 @@ def test_openf1_mapping_validates_all_layers():
     gold = silver_to_gold(silver, 3, session_start=origin)
     assert gold.iloc[-1]["event_timestamp"] == origin + pd.Timedelta(seconds=270)
 
+    # Real OpenF1 stops commonly name the out lap, which must label the
+    # preceding lap as the pit decision for behavioral cloning.
+    records["pit"][0]["lap_number"] = 3
+    aligned = bronze_to_silver(canonical_laps(records, origin), 2026, 1, "R")
+    assert aligned["pit_in_this_lap"].tolist() == [False, True, False]
+    assert aligned["pit_out_this_lap"].tolist() == [False, False, True]
+
 
 @pytest.fixture
 def local_acquisition(tmp_path, monkeypatch):
