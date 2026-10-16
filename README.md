@@ -1,130 +1,140 @@
 # Pitwall AI
 
-> An open-source F1 race strategy engine — pit timing, tire compound selection, and safety-car response — powered by reinforcement learning and a cloud-native MLOps stack.
+Watch a race unfold, explore pit strategy, and reproduce the model training behind it.
+Pitwall combines an animated Formula 1 race center with a historical race simulator
+and an end-to-end machine-learning pipeline.
 
+[![CI](https://github.com/whk-irl/F1_Strategy/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/whk-irl/F1_Strategy/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-**[🏎️ Live demo →](https://f1strategy-forza.streamlit.app/)**
+**[Open the live demo](https://f1strategy-forza.streamlit.app/)** ·
+[Training results](docs/model-cards/2026-10-15-retraining.md) ·
+[Race Center guide](docs/guides/race-center.md)
 
----
+![Race Center: circuit positions, classification, telemetry and strategy panels](docs/assets/race-center.png)
 
-## What it does
+## Explore the race
 
-Given the current race state, Pitwall AI recommends:
+**Race Center** opens with a recorded race. Cars follow actual OpenF1 position
+samples around a recorded circuit trace, with smooth interpolation between samples.
 
-- **When to pit** — balancing track position, tyre life, and pit-loss time
-- **Which compound to fit** — soft / medium / hard, with wet-weather overrides
-- **How to react to safety cars** — identifying free-stop windows in real time
+- **Track position:** follow any driver, toggle labels, and switch between full-circuit
+  and selected-car views.
+- **Race panels:** classification and gaps, tyre compounds and stint history, speed,
+  gear, throttle, brake, completed-lap sectors, weather, and race-control messages.
+- **Playback:** pause, seek, restart, and replay at 1×–60×. Timing follows the replay cursor.
+- **Strategy Lab:** compare the baked model experiments and read the latest published
+  pretraining and fine-tuning results.
 
-The frontend opens in **Race Center**:
+Historical replay is free, with OpenF1 coverage from 2023 onwards. The first load of
+a race downloads and caches its GPS and telemetry, which can take a minute or more.
+Positions are approximate; missing or stale data stays unavailable.
 
-- **Recorded replay** — watch cars move around the actual circuit trace, with a timing tower,
-  selected-driver telemetry, tyre stints, weather and race-control messages. Pause, seek,
-  change speed, follow a car or choose another race. OpenF1 location coverage begins in 2023.
-- **Live timing** — polls the active OpenF1 session every 15 seconds and displays feed delay.
-  Current live data requires an OpenF1 subscription and a server-side `OPENF1_TOKEN`.
-  When no session is active, the screen offers recorded replay.
-- **Strategy Lab** — retains the existing model comparison and simulated lap explorer.
-  The race-center strategy desk uses a labelled nominal dry-race dynamic program.
-  The newly trained candidate remains experimental because it did not beat the DP benchmark.
+The **Live** tab checks the current session, refreshes every 15 seconds and uses a
+20-second playback buffer. It shows a waiting screen between sessions. Current live
+data requires an [OpenF1 subscription](https://openf1.org/docs/) and server credentials;
+the public replay needs neither. See [connection setup](docs/guides/race-center.md#live-sessions).
 
-See the [race-center guide](docs/guides/race-center.md) for controls and data semantics.
+## Latest training result
 
-![Race Center with recorded car positions and race telemetry](docs/assets/race-center.png)
+The October 2026 run used **120,935 lap records across 109 events**, including 17
+completed 2026 races acquired through the OpenF1 fallback. The lifecycle covers
+supporting-model pretraining and adaptation, simulator validation, behavioral cloning,
+four-frame PPO pretraining, and recent-event fine-tuning.
 
----
+| Held-out policy | Mean position | Mean race time (s) | Mean pit stops |
+|---|---:|---:|---:|
+| Source PPO | 8.575 | 5986.80 | 1.70 |
+| Fine-tuned PPO | 8.575 | 5985.04 | 1.60 |
+| Dynamic-programming benchmark | **8.425** | **5973.64** | 1.00 |
 
-## How it works
+**The new PPO candidate is not promoted.** Fine-tuning improved mean race time over
+source PPO, but dynamic programming remained stronger. Evaluation used 40 paired
+episodes across three eligible held-out events and one training seed. Both simulator
+gates passed the required Spearman rho ≥ 0.7 (0.827 and 0.817).
 
-```
-FastF1 / OpenF1
-      │
-      ▼
-Bronze → Silver → Gold  (Parquet on S3, partitioned by year/round/session)
-      │
-      ├─► Tire degradation model   (LightGBM)
-      ├─► Safety-car probability   (LightGBM)
-      └─► Race Simulator           (Gymnasium env)
-                │
-                ▼
-          Historical action pre-training → PPO → recent-season fine-tuning
-                │
-                ▼
-          Streamlit Race Center + Strategy Lab
-```
-
-The simulator replays recorded field lap times so the agent competes against a realistic grid. The policy is trained with shaped rewards for position gains, tyre-cliff avoidance, and safety-car opportunism.
-
----
-
-## Tech stack
-
-| Layer | Tool |
-|---|---|
-| Data | FastF1, OpenF1 API, Parquet, S3 |
-| Orchestration | Prefect (dev), Argo Workflows (prod) |
-| Experiment tracking | MLflow |
-| ML | LightGBM, PyTorch + Stable-Baselines3 (PPO / DQN+PER) |
-| Serving | BentoML → FastAPI |
-| Frontend | Streamlit |
-| Infrastructure | Kubernetes, Helm, Argo CD, Terraform (EKS / AKS) |
-| CI/CD | GitHub Actions |
-| Observability | Prometheus, Grafana, Loki, Evidently |
-
----
+Read the [model card](docs/model-cards/2026-10-15-retraining.md) for splits, uncertainty,
+supporting-model metrics and limitations, and the [algorithm decision](docs/decisions/0005-staged-policy-training.md)
+for the research behind the method. The race-center strategy desk is a labelled
+nominal dry-race DP reference, separate from the calibrated evaluation benchmark.
 
 ## Run locally
 
+Use Python 3.11 and [uv](https://docs.astral.sh/uv/).
+
 ```bash
-git clone https://github.com/whk-irl/F1_Strategy
+git clone https://github.com/whk-irl/F1_Strategy.git
 cd F1_Strategy
-
-# Install dependencies
-uv sync
-
-# Copy env config
-cp .env.example .env
-
-# Launch the race center (fetches and caches recorded GPS on first use)
+uv sync --python 3.11 --extra dev
 uv run streamlit run services/frontend/app.py
 ```
 
-The repo ships with pre-baked models (`models_baked/`) and race data
-(`data/gold_2022_2025.parquet`) for Strategy Lab. Race Center fetches recorded GPS and
-telemetry from OpenF1 on first use; subsequent loads use `data/race_center/`.
-The hosted demo may still run an earlier release until this branch is deployed.
+Open `http://localhost:8501`. Race Center fetches historical data on first use.
+Strategy Lab includes baked models and 2022–2025 lap data, so training is optional
+for exploring those experiments. The published model card and chart also ship with
+the app; full checkpoints and MLflow runs remain local generated artifacts.
+
+For live access, set `OPENF1_TOKEN` on the server, or `OPENF1_USERNAME` and
+`OPENF1_PASSWORD` for automatic token renewal. `.env.example` lists optional settings.
+Keep credentials in environment variables or the hosting provider's secret store.
 
 ## Retrain end to end
 
 ```bash
-uv sync --python 3.11 --extra dev
 uv run python -m services.ingestion.acquire --years 2026 --provider auto
 uv run python -m ml.pipelines.train --config configs/training.local.json
 ```
 
-The new workflow acquires completed races with an OpenF1 fallback, rebuilds causal
-features, pretrains and fine-tunes the supporting models, validates the simulator,
-then runs historical-action pretraining → history-aware PPO → newer-event fine-tuning.
-It reserves chronological validation/test events and benchmarks against dynamic
-programming on paired episodes. Checkpoints, reports, provenance and MLflow records
-are saved locally. Use `--resume` to verify and reuse completed stages.
+```mermaid
+flowchart LR
+    A[FastF1 / OpenF1] --> B[Bronze → Silver → Gold]
+    B --> C[World-model pretraining and adaptation]
+    C --> D[Simulator fidelity gates]
+    D --> E[Behavioral pretraining]
+    E --> F[History-aware PPO]
+    F --> G[Recent-event fine-tuning]
+    G --> H[Held-out evaluation against DP]
+    H --> I[Versioned artifacts and MLflow report]
+```
 
-Read the [training guide](docs/guides/staged-training.md) and
-[algorithm decision](docs/decisions/0005-staged-policy-training.md) before changing splits
-or using the new 96-input candidate with the legacy 21-input frontend.
+Acquisition is resumable and records source checksums. Features are rebuilt causally;
+event splits are chronological, with validation for checkpoint selection and separate
+final test events. Policy learning starts only after both simulator gates pass.
 
-The [October 15 retraining result](docs/model-cards/2026-10-15-retraining.md) records
-the completed run, including the stronger dynamic-programming baseline and the
-unpromoted PPO candidate.
+The local profile budgets 200,000 PPO source steps and 100,000 fine-tuning steps.
+It writes checkpoints, normalization statistics, split membership, metrics and
+provenance under `runs/`. Use `--resume` to verify completed stages of an unchanged
+run. Choose a new `output_dir` after changing source, data or configuration; the
+saved October 15 run predates the subsequent UI changes.
 
----
+See the [training guide](docs/guides/staged-training.md) for configuration, artifacts
+and inference. The 96-input staged candidate has a dedicated loader and does not
+overwrite the legacy 21-input models.
 
-## Why I built this
+## Validation and scope
 
-A tifosi dreamed of another Ferrari WDC.
+```bash
+uv run ruff check .
+uv run ruff format --check .
+uv run mypy services/ ml/
+uv run pytest
+```
 
----
+The October 16 update passed **166 tests with 89.08% configured coverage**, plus Ruff
+and mypy checks. Replay controls and desktop/mobile layouts were checked in the
+browser. Authenticated active-session timing still requires verification during a race.
+
+This is an independent research project. Opponents follow recorded trajectories;
+they do not react to the policy. The trained candidate covers dry races without red
+flags and does not model tyre inventory. Results do not establish real-race superiority.
+
+The repository also contains cloud-agnostic storage, serving and infrastructure
+scaffolding. [Deployment instructions](docs/guides/deployment.md) describe the existing
+Streamlit Community Cloud app. See [architecture](docs/architecture.md) and
+[scope](docs/scope.md) for the wider project.
 
 ## License
 
-MIT
+[MIT](LICENSE). Race data is supplied by [FastF1](https://docs.fastf1.dev/) and
+[OpenF1](https://openf1.org/). This project is unofficial and is not affiliated with
+Formula 1, the FIA, or any team.

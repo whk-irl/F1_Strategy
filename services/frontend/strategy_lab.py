@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import time
 from pathlib import Path
 from typing import Any, cast
+from urllib.parse import urljoin
 
 import mlflow.pyfunc
 import pandas as pd
@@ -1311,15 +1313,23 @@ def main() -> None:
         if not run_dir.is_absolute():
             run_dir = root / run_dir
         report = run_dir / "report.md"
+        chart = run_dir / "training_summary.png"
+        published = not report.exists()
+        if published:
+            report = root / "docs" / "model-cards" / "2026-10-15-retraining.md"
+            chart = root / "docs" / "assets" / "training-summary.png"
         if report.exists():
             st.caption(
                 "BC → history-aware PPO → recent-event fine-tuning. "
                 "This candidate has not been promoted; the DP benchmark remains stronger."
             )
-            chart = run_dir / "training_summary.png"
             if chart.exists():
                 st.image(str(chart))
             text = report.read_text(encoding="utf-8")
+            if published:
+                st.caption("Published run summary. Full checkpoints and MLflow records stay local.")
+                base = "https://github.com/whk-irl/F1_Strategy/blob/main/docs/model-cards/"
+                text = re.sub(r"\]\(([^)]+)\)", lambda match: f"]({urljoin(base, match[1])})", text)
             st.download_button("Download training report", text, file_name="training-report.md")
             st.markdown(text)
         else:
