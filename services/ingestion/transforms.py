@@ -10,7 +10,7 @@ failures are caught close to where the bad data is produced.
 from __future__ import annotations
 
 import logging
-from typing import Any, Final
+from typing import Any, Final, cast
 
 import numpy as np
 import pandas as pd
@@ -35,8 +35,9 @@ COMPOUND_ENCODING: Final[dict[str, int]] = {
 TRACK_STATUS_ENCODING: Final[dict[str, int]] = {
     "1": 0,  # clear
     "2": 1,  # yellow flag
-    "4": 2,  # VSC
-    "6": 3,  # SC
+    "4": 2,  # SC (legacy numeric encoding retained for saved models)
+    "6": 3,  # VSC
+    "7": 3,  # VSC ending
     "5": 4,  # red flag
 }
 
@@ -104,8 +105,15 @@ def bronze_to_silver(
 
     # --- Pit flags ---
     # PitInTime is non-null when the car entered the pit lane on this lap.
-    out["pit_in_this_lap"] = out.get("PitInTime", pd.Series(dtype=object)).notna()
-    out["pit_out_this_lap"] = out.get("PitOutTime", pd.Series(dtype=object)).notna()
+    out["pit_in_this_lap"] = out.get("PitInTime", pd.Series(index=out.index, dtype=object)).notna()
+    out["pit_out_this_lap"] = out.get(
+        "PitOutTime", pd.Series(index=out.index, dtype=object)
+    ).notna()
+    out["is_accurate"] = out["is_accurate"].fillna(False).astype(bool)
+    out["lap_end_time_s"] = _timedelta_to_seconds(out["Time"]) if "Time" in out else np.nan
+    for col in ("track_temp_c", "air_temp_c", "rainfall"):
+        if col not in out:
+            out[col] = np.nan
 
     # --- Compound normalisation ---
     out["compound"] = (
@@ -130,7 +138,9 @@ def bronze_to_silver(
 
 
 @pa.check_output(GoldLapSchema)
-def silver_to_gold(df: pd.DataFrame, total_laps: int) -> pd.DataFrame:
+def silver_to_gold(
+    df: pd.DataFrame, total_laps: int, session_start: pd.Timestamp | None = None
+) -> pd.DataFrame:
     """Engineer ML features from the silver canonical lap table.
 
     Args:
@@ -140,7 +150,13 @@ def silver_to_gold(df: pd.DataFrame, total_laps: int) -> pd.DataFrame:
     Returns:
         Gold DataFrame conforming to ``GoldLapSchema``.
     """
-    out = df.copy()
+    if total_laps < 1:
+        raise ValueError("total_laps must be positive")
+    if df.empty:
+        raise ValueError("Cannot build gold features from an empty session")
+    if len(df[["year", "round_number", "session"]].drop_duplicates()) != 1:
+        raise ValueError("silver_to_gold expects exactly one session")
+    out = df.sort_values(["driver_number", "stint_number", "lap_number"]).copy()
 
     # --- Feast event_timestamp — synthetic race date (year + round → approx date) ---
     year_val = int(out["year"].iloc[0])
@@ -148,7 +164,12 @@ def silver_to_gold(df: pd.DataFrame, total_laps: int) -> pd.DataFrame:
     race_date = pd.Timestamp(year=year_val, month=3, day=1, tz="UTC") + pd.Timedelta(
         weeks=(round_val - 1) * 2
     )
-    out["event_timestamp"] = race_date
+    # Legacy imports lack real timing; acquisition always supplies the actual UTC origin.
+    origin = session_start if session_start is not None else race_date
+    origin = pd.Timestamp(origin)
+    origin = origin.tz_localize("UTC") if origin.tzinfo is None else origin.tz_convert("UTC")
+    elapsed = out.get("lap_end_time_s", pd.Series(0.0, index=out.index)).fillna(0.0)
+    out["event_timestamp"] = origin + pd.to_timedelta(elapsed, unit="s")
 
     # --- race_progress ---
     out["race_progress"] = (out["lap_number"] / total_laps).clip(0.0, 1.0)
@@ -163,15 +184,25 @@ def silver_to_gold(df: pd.DataFrame, total_laps: int) -> pd.DataFrame:
     out["sc_laps_since_last"] = _laps_since_sc(out)
 
     # --- Per-driver, per-stint features ---
-    group_driver_stint = out.groupby(["driver_code", "stint_number"], sort=False)
+    group_driver_stint = out.groupby(["driver_number", "stint_number"], sort=False)
 
-    out["lap_time_delta_s"] = group_driver_stint["lap_time_s"].transform(lambda s: s - s.median())
-    out["rolling_lap_time_3_s"] = group_driver_stint["lap_time_s"].transform(
+    clean_mask = (
+        out["is_accurate"].fillna(False)
+        & ~out["pit_in_this_lap"]
+        & ~out["pit_out_this_lap"]
+        & out["track_status_encoded"].eq(0)
+    )
+    out["_clean_lap"] = out["lap_time_s"].where(clean_mask)
+    clean_groups = out.groupby(["driver_number", "stint_number"], sort=False)["_clean_lap"]
+    out["lap_time_delta_s"] = out["_clean_lap"] - clean_groups.transform(
+        lambda s: s.expanding(min_periods=1).median().shift(1)
+    )
+    out["rolling_lap_time_3_s"] = clean_groups.transform(
         lambda s: s.rolling(3, min_periods=1).mean()
     )
-    out["tyre_deg_rate_s_per_lap"] = group_driver_stint.apply(  # type: ignore[call-overload]
-        _compute_deg_rate, include_groups=False
-    ).reset_index(level=[0, 1], drop=True)
+    out["tyre_deg_rate_s_per_lap"] = np.nan
+    for _, group in group_driver_stint:
+        out.loc[group.index, "tyre_deg_rate_s_per_lap"] = _compute_deg_rate(group)
 
     # --- Position change since stint start ---
     out["position_change_this_stint"] = group_driver_stint["position"].transform(
@@ -179,10 +210,10 @@ def silver_to_gold(df: pd.DataFrame, total_laps: int) -> pd.DataFrame:
     )
 
     # --- Team relative pace: driver lap time vs field median for that lap ---
-    field_median = out.groupby("lap_number")["lap_time_s"].transform("median")
+    field_median = out.groupby("lap_number")["_clean_lap"].transform("median")
     out["lap_delta_to_field_median_s"] = out["lap_time_s"] - field_median
 
-    return out
+    return out.drop(columns=["_clean_lap"])
 
 
 # ---------------------------------------------------------------------------
@@ -201,7 +232,7 @@ def _encode_track_status(series: pd.Series[Any]) -> pd.Series[Any]:
     FastF1 can return composite strings like ``"12"`` meaning yellow + clear.
     We take the *highest priority* code present.
     """
-    priority = {"5": 4, "6": 3, "4": 2, "2": 1, "1": 0}
+    priority = {"5": 4, "7": 3, "6": 3, "4": 2, "2": 1, "1": 0}
 
     def _map_row(val: object) -> int:
         if pd.isna(val):  # type: ignore[call-overload]
@@ -214,9 +245,18 @@ def _encode_track_status(series: pd.Series[Any]) -> pd.Series[Any]:
 
 def _laps_since_sc(df: pd.DataFrame) -> pd.Series[Any]:
     """Return the number of laps elapsed since the last SC/VSC period ended."""
-    # SC/VSC laps have track_status_encoded >= 2.
     encoded = _encode_track_status(df["track_status"])
-    is_sc = encoded >= 2
+    if "lap_number" in df:
+        by_lap = encoded.groupby(df["lap_number"]).max().sort_index()
+        last_sc = np.nan
+        elapsed: dict[int, float] = {}
+        for lap, status in by_lap.items():
+            lap_number = int(cast(Any, lap))
+            if status in (2, 3):
+                last_sc = float(lap_number)
+            elapsed[lap_number] = float(lap_number - last_sc)
+        return df["lap_number"].map(elapsed)
+    is_sc = encoded.isin([2, 3])
 
     counter = np.zeros(len(df), dtype=float)
     c = np.nan
@@ -236,11 +276,12 @@ def _compute_deg_rate(group: pd.DataFrame) -> pd.Series[Any]:
     Returns NaN for stints with fewer than 3 valid laps (insufficient for a
     meaningful regression).
     """
-    valid = group[["tyre_life_laps", "lap_time_s"]].dropna()
-    if len(valid) < 3:
-        return pd.Series(np.nan, index=group.index)
-
-    x = np.asarray(valid["tyre_life_laps"].values, dtype=float)
-    y = np.asarray(valid["lap_time_s"].values, dtype=float)
-    slope = float(np.polyfit(x, y, 1)[0])
-    return pd.Series(max(slope, 0.0), index=group.index)
+    valid = group["tyre_life_laps"].notna() & group["lap_time_s"].notna()
+    if "_clean_lap" in group:
+        valid &= group["_clean_lap"].notna()
+    x = group["tyre_life_laps"].where(valid, 0.0).fillna(0.0)
+    y = group["lap_time_s"].where(valid, 0.0).fillna(0.0)
+    n = valid.astype(int).cumsum()
+    denominator = n * (x * x).cumsum() - x.cumsum() ** 2
+    numerator = n * (x * y).cumsum() - x.cumsum() * y.cumsum()
+    return (numerator / denominator.where(denominator > 0)).where(n >= 3).clip(lower=0.0)

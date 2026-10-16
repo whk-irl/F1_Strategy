@@ -327,7 +327,7 @@ def train(config: SequenceTireConfig | None = None) -> None:
                 optimizer.step()
                 train_losses.append(loss.item())
 
-            scheduler.step()
+            scheduler.step()  # type: ignore[no-untyped-call]
             avg_train_loss = float(np.mean(train_losses))
 
             val_mae, val_r2 = _evaluate(model, val_loader, device)

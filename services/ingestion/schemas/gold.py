@@ -20,13 +20,13 @@ class GoldLapSchema(SilverLapSchema):
     # Feast timestamp — synthetic race date for point-in-time joins
     event_timestamp: Series[pd.DatetimeTZDtype] = pa.Field(
         dtype_kwargs={"tz": "UTC"},
-        description="Approximate race date (year + round) in UTC, for Feast joins.",
+        description="Lap completion time in UTC; legacy imports use an approximate origin.",
     )
 
     # Pace features
     lap_time_delta_s: Series[float] = pa.Field(
         nullable=True,
-        description="lap_time_s minus driver's median lap time in this stint.",
+        description="Clean lap time minus the median of prior clean laps in this stint.",
     )
     rolling_lap_time_3_s: Series[float] = pa.Field(
         nullable=True,
@@ -37,7 +37,7 @@ class GoldLapSchema(SilverLapSchema):
     tyre_deg_rate_s_per_lap: Series[float] = pa.Field(
         nullable=True,
         ge=0.0,
-        description="OLS slope of lap_time_s vs tyre_life_laps within this stint.",
+        description="Expanding OLS slope using only clean laps observed so far in the stint.",
     )
 
     # Safety-car context
@@ -48,7 +48,7 @@ class GoldLapSchema(SilverLapSchema):
     )
     track_status_encoded: Series[int] = pa.Field(
         ge=0,
-        description="Numeric encoding: 0=clear, 1=yellow, 2=VSC, 3=SC, 4=red.",
+        description="Numeric encoding: 0=clear, 1=yellow, 2=SC, 3=VSC, 4=red.",
     )
 
     # Race progress

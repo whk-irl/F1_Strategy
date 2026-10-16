@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pitwall Race Center</title><link rel="stylesheet" href="style.css">
+  <script src="app.js" defer></script>
+</head>
+<body>
+<main id="app">
+  <header class="masthead">
+    <div class="brand"><span class="brand-mark" aria-hidden="true">///</span><b>PITWALL<span class="brand-dot">.</span></b><span class="brand-sub">RACE CENTER</span></div>
+    <nav aria-label="Workspace"><span class="nav-active">Race Center</span><button id="lab">Strategy Lab <span>↗</span></button></nav>
+    <div class="feed-stamp"><i></i><span id="feed-label">RECORDED TELEMETRY</span></div>
+  </header>
+  <section class="event-bar" aria-label="Race selection">
+    <div class="event-title"><span class="eyebrow" id="round-title">THE RACE / 2026</span><h1 id="event-title">Race archive</h1><p id="event-subtitle">Every lap. Every decision.</p></div>
+    <div class="event-controls"><div class="mode-control" aria-label="Feed mode"><button id="replay-mode" class="active">Replay</button><button id="live-mode"><i></i> Live</button></div>
+      <div class="selectors"><label class="sr-only" for="season">Season</label><select id="season" aria-label="Season"></select><label class="sr-only" for="session">Race</label><select id="session" aria-label="Race"></select></div>
+    </div>
+  </section>
+  <section id="notice" class="notice" hidden><span class="notice-icon">◉</span><span class="eyebrow">RACE CONTROL</span><h2 id="notice-title"></h2><p id="notice-detail"></p><button id="return-replay" class="primary">Watch a recorded race →</button><button id="retry" class="outline">Retry connection</button></section>
+  <div id="race-content" hidden>
+    <section class="race-strip" aria-label="Session status">
+      <div class="lap-counter"><span class="eyebrow">LAP</span><strong id="leader-lap">—</strong><span id="total-laps">/ —</span><div class="race-progress"><i id="lap-progress"></i></div></div>
+      <div id="track-status" class="status-chip">TRACK CLEAR</div><span class="strip-separator"></span>
+      <div class="weather-item"><span class="weather-icon">☀</span><span>AIR <b id="air-temp">—</b></span></div><div class="weather-item"><span class="track-temp-icon">≋</span><span>TRACK <b id="track-temp">—</b></span></div><div class="weather-item"><span>WIND <b id="wind">—</b></span></div>
+      <div class="session-clock"><span class="eyebrow" id="clock-label">RACE TIME</span><b id="race-clock">00:00:00</b></div>
+    </section>
+    <div class="dashboard">
+      <section class="panel timing-panel" aria-label="Live timing tower">
+        <div class="panel-heading"><h2>Classification</h2><span class="subtle">GAP TO LEADER</span></div>
+        <div class="tower-labels"><span>POS</span><span>DRIVER</span><span>TYRE</span><span>GAP</span></div>
+        <div id="timing-tower"></div>
+        <div class="tower-footer"><span class="selected-indicator"></span> Select a driver to follow their race</div>
+      </section>
+      <div class="center-column">
+        <section class="panel map-panel" aria-label="Circuit map and recorded car positions">
+          <div class="panel-heading"><div><h2>Track position</h2><span class="subtle" id="map-location">CIRCUIT MAP</span></div><div class="map-controls"><button id="labels" class="icon-button active" aria-label="Toggle driver labels" aria-pressed="true">Aa</button><button id="focus" class="icon-button" aria-label="Follow selected car" aria-pressed="false">⌖</button><button id="reset-map" class="icon-button" aria-label="Reset map view">⤢</button></div></div>
+          <div class="map-wrap"><canvas id="track-canvas" role="img" aria-label="Circuit map with moving car positions"></canvas><div class="map-watermark" aria-hidden="true"><span id="map-name">MONZA</span><small>THE RACING LINE</small></div><div class="map-key"><i></i><span id="map-source">RECORDED GPS · INTERPOLATED</span></div><div class="map-north" aria-hidden="true">TRACK VIEW ↗</div></div>
+          <div class="map-caption"><span id="follow-caption">Following —</span><span id="gps-health">GPS POSITION FEED</span></div>
+        </section>
+        <section class="panel telemetry-panel" aria-label="Selected driver telemetry">
+          <div class="panel-heading"><h2>Onboard telemetry</h2><span class="driver-tag" id="telemetry-driver">—</span></div>
+          <div class="telemetry-main"><div class="speed-block"><span class="eyebrow">SPEED</span><div><strong id="speed">—</strong><span>KM/H</span></div><svg viewBox="0 0 230 26" aria-hidden="true"><path id="speed-trace" fill="none" stroke="#f45252" stroke-width="2"/></svg></div><div class="gear-block"><span class="eyebrow">GEAR</span><strong id="gear">—</strong><span id="rpm">— RPM</span></div><div class="pedals"><div><span>THROTTLE</span><b id="throttle-value">—</b></div><div class="pedal-track"><i id="throttle-bar"></i></div><div><span>BRAKE</span><b id="brake-value">—</b></div><div class="pedal-track brake"><i id="brake-bar"></i></div><div class="drs-status" id="drs">DRS —</div></div></div>
+          <div class="sector-row"><span><small>LAST LAP</small><b id="last-lap">—</b></span><span><small>SECTOR 1</small><b id="sector-1">—</b></span><span><small>SECTOR 2</small><b id="sector-2">—</b></span><span><small>SECTOR 3</small><b id="sector-3">—</b></span></div>
+        </section>
+      </div>
+      <aside class="right-column">
+        <section class="panel driver-panel" aria-label="Selected driver">
+          <div class="panel-heading"><h2>Driver focus</h2><span class="focus-badge">ONBOARD</span></div>
+          <div class="driver-identity"><span class="driver-number" id="driver-number">1</span><div><h3 id="driver-name">—</h3><span id="driver-team">—</span></div><b id="driver-position">P—</b></div>
+          <div class="driver-stats"><div><span>INTERVAL</span><b id="driver-interval">—</b></div><div><span>PIT STOPS</span><b id="driver-stops">0</b></div><div><span>CURRENT LAP</span><b id="driver-lap">—</b></div></div>
+          <div class="tyre-state"><span id="tyre-badge" class="tyre medium">M</span><div><b id="tyre-name">MEDIUM</b><span id="tyre-age">— LAPS ON TYRE</span></div><span id="stint-label">STINT —</span></div><div id="stint-history" class="stint-history" aria-label="Recorded tyre stint history"></div>
+        </section>
+        <section class="panel strategy-panel" aria-label="Strategy reference">
+          <div class="panel-heading"><h2>Strategy desk</h2><span class="strategy-badge">REFERENCE</span></div>
+          <div class="strategy-call"><span class="eyebrow">NOMINAL DRY PLAN</span><h3 id="strategy-action">Stay out</h3><p id="strategy-detail">Calculating remaining stint…</p></div>
+          <div class="strategy-metrics"><div><span>PIT LOSS ASSUMPTION</span><b id="pit-loss">22.0 <small>s</small></b></div><div><span>NEXT COMPOUND</span><b id="next-compound">HARD</b></div></div>
+          <div class="plan-bar" id="plan-bar"></div><p class="strategy-footnote">Dynamic programming · nominal tyre curve. Ignores traffic, weather forecasts and tyre inventory. Research reference only.</p>
+        </section>
+        <section class="panel control-panel" aria-label="Race control messages"><div class="panel-heading"><h2>Race control</h2><span class="control-icon">◉</span></div><div id="race-messages" role="log" aria-live="off"></div></section>
+      </aside>
+    </div>
+    <section class="playback panel" aria-label="Playback controls">
+      <div class="transport"><button id="restart" class="icon-button" aria-label="Restart replay">↶</button><button id="play" class="play-button" aria-label="Pause replay">Ⅱ</button><label class="sr-only" for="playback-speed">Playback speed</label><select id="playback-speed" aria-label="Playback speed"><option value="1">1×</option><option value="5">5×</option><option value="10">10×</option><option value="30">30×</option><option value="60">60×</option></select></div>
+      <div class="timeline"><div class="timeline-labels"><span id="playback-label">RACE REPLAY</span><span id="playback-time">00:00 / 00:00</span></div><label class="sr-only" for="seek">Race timeline</label><input id="seek" type="range" min="0" max="1000" value="0" step="1" aria-label="Race timeline"><div class="timeline-labels faint"><span>LIGHTS OUT</span><span id="timeline-note">Actual positions · smooth playback</span><span>CHEQUERED FLAG</span></div></div>
+      <div class="playback-status"><i></i><span id="playback-status">PLAYING</span></div>
+    </section>
+  </div>
+  <footer><span>PITWALL <b>RACE INTELLIGENCE</b></span><span>Data: OpenF1 · Independent research project · Unofficial</span><button id="data-note">About the data ↗</button></footer>
+  <dialog id="about-dialog"><button id="close-dialog" aria-label="Close data information">×</button><span class="eyebrow">BEHIND THE TIMING</span><h2>A race, from the data.</h2><p>Car positions come from OpenF1's recorded location samples. Motion is interpolated between adjacent samples; this is an approximate circuit view, not lane-accurate positioning. Gaps and timing update at the provider's sample rate.</p><p>Telemetry, completed lap sectors, tyre stints, weather and race-control messages follow the replay cursor. A missing or stale sample displays as unavailable. Historical availability begins in 2023.</p><p>The strategy desk runs a nominal dry-race dynamic program. It is a planning reference, separate from the trained policy. The new fine-tuned policy did not beat the simulator's DP benchmark and has not been promoted.</p><p>Live sessions need an OpenF1 subscription and a server-side OPENF1_TOKEN. This app refreshes every 15 seconds with a 20-second playback buffer for smooth motion. It displays the current delay; provider and network latency still apply.</p><a href="https://openf1.org/docs/" target="_blank" rel="noopener noreferrer">OpenF1 documentation ↗</a></dialog>
+</main>
+</body></html>

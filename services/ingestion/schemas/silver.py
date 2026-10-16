@@ -39,6 +39,10 @@ class SilverLapSchema(pa.DataFrameModel):
     sector1_s: Series[float] = pa.Field(nullable=True, ge=0.0)
     sector2_s: Series[float] = pa.Field(nullable=True, ge=0.0)
     sector3_s: Series[float] = pa.Field(nullable=True, ge=0.0)
+    lap_end_time_s: Series[float] = pa.Field(nullable=True, ge=0.0)
+    track_temp_c: Series[float] = pa.Field(nullable=True)
+    air_temp_c: Series[float] = pa.Field(nullable=True)
+    rainfall: Series[float] = pa.Field(nullable=True, ge=0.0, le=1.0)
 
     # Tire
     compound: Series[str] = pa.Field(

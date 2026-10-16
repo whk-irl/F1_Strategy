@@ -122,7 +122,9 @@ mlflow.db
 *.joblib
 *.safetensors
 checkpoints/
-runs/                # tensorboard / sb3 default
+# Tensorboard, SB3 and staged training artifacts
+runs/
+.fastf1_cache_test/
 tb_logs/
 wandb/
 lightning_logs/

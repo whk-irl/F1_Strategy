@@ -107,7 +107,7 @@ def transform_to_gold_task(
     year: int,
     round_number: int,
     session: str,
-    total_laps: int,
+    total_laps: int | None,
 ) -> str:
     """Read silver, engineer gold features, validate, and persist.
 
@@ -124,7 +124,13 @@ def transform_to_gold_task(
         The S3 key of the gold Parquet object.
     """
     silver_df = storage.read_parquet(silver_key)
-    gold_df = silver_to_gold(silver_df, total_laps=total_laps)
+    distance = total_laps or int(silver_df.attrs.get("total_laps", silver_df["lap_number"].max()))
+    origin = silver_df.attrs.get("session_start")
+    import pandas as pd
+
+    gold_df = silver_to_gold(
+        silver_df, total_laps=distance, session_start=pd.Timestamp(origin) if origin else None
+    )
 
     key = build_parquet_key(settings.gold_prefix, year, round_number, session)
     storage.write_parquet(gold_df, key)
@@ -146,7 +152,7 @@ def ingest_session(
     year: int,
     round_number: int,
     session: str = "R",
-    total_laps: int = 57,
+    total_laps: int | None = None,
 ) -> dict[str, str]:
     """End-to-end ingestion flow for a single F1 session.
 
@@ -201,7 +207,9 @@ def main(
     year: Annotated[int, typer.Option("--year", help="Championship year.")] = 2024,
     round: Annotated[int, typer.Option("--round", help="Race round number.")] = 1,
     session: Annotated[str, typer.Option("--session", help="Session type (R/Q/FP1…).")] = "R",
-    total_laps: Annotated[int, typer.Option("--total-laps", help="Scheduled race laps.")] = 57,
+    total_laps: Annotated[
+        int | None, typer.Option("--total-laps", help="Override race distance.")
+    ] = None,
     all_rounds: Annotated[
         bool, typer.Option("--all-rounds", help="Ingest every round in the season.")
     ] = False,

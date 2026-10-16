@@ -31,8 +31,8 @@ FEATURE_COLS: list[str] = [
     "lap_time_delta_s",
     "tyre_deg_rate_s_per_lap",
     # Additional context features
-    "sc_laps_since_last",   # track-state recovery signal after restarts
-    "position",             # clean-air vs traffic context
+    "sc_laps_since_last",  # track-state recovery signal after restarts
+    "position",  # clean-air vs traffic context
 ]
 
 TARGET_COL: str = "lap_time_delta_s"
@@ -149,7 +149,13 @@ def _build_windows(
     if n < seq_len + 1:
         return windows, window_targets
 
+    laps = group["lap_number"].to_numpy() if "lap_number" in group else np.arange(n)
     for t in range(seq_len, n):
+        # A filtered SC or pit lap must break history rather than join unrelated laps.
+        if not np.all(np.diff(laps[t - seq_len : t + 1]) == 1):
+            continue
+        if not np.isfinite(vals[t - seq_len : t]).all() or not np.isfinite(targets[t]):
+            continue
         windows.append(vals[t - seq_len : t])
         window_targets.append(float(targets[t]))
 
@@ -188,6 +194,8 @@ class StintSequenceDataset(Dataset[tuple[torch.Tensor, torch.Tensor]]):
         seq_len: int = SEQ_LEN,
     ) -> None:
         self._seq_len = seq_len
+        if seq_len < 1:
+            raise ValueError("seq_len must be positive")
         clean = self._filter(df)
 
         if val_rounds is not None:
@@ -196,6 +204,9 @@ class StintSequenceDataset(Dataset[tuple[torch.Tensor, torch.Tensor]]):
 
         if norm_stats is None:
             arr = clean[FEATURE_COLS].to_numpy(dtype=np.float32)
+            arr = arr[np.isfinite(arr).all(axis=1)]
+            if not len(arr):
+                raise ValueError("No finite training features for normalization")
             norm_stats = NormStats(
                 mean=arr.mean(axis=0),
                 std=arr.std(axis=0),
@@ -206,6 +217,8 @@ class StintSequenceDataset(Dataset[tuple[torch.Tensor, torch.Tensor]]):
         self._ys: list[torch.Tensor] = []
 
         group_keys = ["year", "round_number", "driver_number", "stint_number"]
+        if "session" in clean:
+            group_keys.insert(2, "session")
         for _, group in clean.sort_values([*group_keys, "lap_number"]).groupby(
             group_keys, sort=False
         ):
@@ -227,12 +240,14 @@ class StintSequenceDataset(Dataset[tuple[torch.Tensor, torch.Tensor]]):
         """
         mask = (
             (df["session"] == "R")
-            & df["is_accurate"].astype(bool)
+            & df["is_accurate"].fillna(False).astype(bool)
+            & df["track_status_encoded"].eq(0)
             & (~df["pit_in_this_lap"].astype(bool))
             & (~df["pit_out_this_lap"].astype(bool))
             & df["lap_delta_to_field_median_s"].notna()
             & df["tyre_life_laps"].notna()
             & (df["tyre_life_laps"] >= 1)
+            & df[TARGET_COL].notna()
         )
         clean = df[mask].copy()
         clean["is_fresh_tyre"] = clean["is_fresh_tyre"].fillna(0).astype(np.float32)
@@ -241,9 +256,7 @@ class StintSequenceDataset(Dataset[tuple[torch.Tensor, torch.Tensor]]):
         )
         # Fill NaN with neutral values before normalisation.
         # sc_laps_since_last: 50 ≈ "no SC in living memory"
-        clean["sc_laps_since_last"] = (
-            clean["sc_laps_since_last"].fillna(50.0).astype(np.float32)
-        )
+        clean["sc_laps_since_last"] = clean["sc_laps_since_last"].fillna(50.0).astype(np.float32)
         # position: 10 ≈ midfield (avoids biasing toward front/back)
         clean["position"] = clean["position"].fillna(10.0).astype(np.float32)
         return clean
