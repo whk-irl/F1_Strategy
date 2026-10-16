@@ -71,6 +71,7 @@ def _acquire_f1_cookies(session: requests.Session) -> dict[str, str]:
     when the HTTP status is not 200, so we never raise on status codes here.
     """
     headers = dict(_F1_BROWSER_HEADERS)
+    kwargs: dict[str, Any]
     for method, kwargs in (
         (session.post, {"json": {}}),
         (session.options, {}),
@@ -107,7 +108,7 @@ def resolve_subscription_token(explicit: str | None = None) -> str:
         auth_file = Path(platformdirs.user_data_dir("fastf1")) / "f1auth.json"
         if auth_file.exists():
             return auth_file.read_text(encoding="utf-8").strip()
-    except Exception:  # noqa: BLE001
+    except Exception:
         pass
     return ""
 
@@ -141,7 +142,7 @@ class F1LiveTimingClient:
         try:
             self._connect_and_collect(timeout)
             self._error = None
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             self._error = str(exc)
             logger.warning("F1 SignalR refresh failed: %s", exc)
             with self._lock:

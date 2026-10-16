@@ -1,4 +1,4 @@
-﻿"""Persistent live-race logs in OpenF1-compatible layout on S3.
+"""Persistent live-race logs in OpenF1-compatible layout on S3.
 
 Canonical module for live S3 logging.  The Streamlit app imports this file
 directly (``live_record``) to avoid Streamlit Cloud caching stale copies of
@@ -21,7 +21,7 @@ be joined with OpenF1 exports or queried like API responses.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 import numpy as np
@@ -159,7 +159,7 @@ def endpoint_key(endpoint: str, session_key: int) -> str:
 
 
 def _utc_now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="milliseconds")
+    return datetime.now(UTC).isoformat(timespec="milliseconds")
 
 
 def _append_rows(
@@ -251,7 +251,7 @@ def append_live_tick(ctx: LiveTickContext) -> list[str]:
             )
             position = ctx.client.get_latest_position(session_key, driver_number)
             pit_stops = len(ctx.client.get_pit_stops(session_key, driver_number))
-        except Exception:  # noqa: BLE001
+        except Exception:
             continue
 
         update_from_openf1(
@@ -315,7 +315,7 @@ def append_live_tick(ctx: LiveTickContext) -> list[str]:
             )
 
         obs = state.build_obs()
-        action, label, probs, qv = ctx.recommend_fn(obs, ctx.policy, ctx.model_type)
+        action, label, probs, _qv = ctx.recommend_fn(obs, ctx.policy, ctx.model_type)
         compound_name = {0: "SOFT", 1: "MEDIUM", 2: "HARD", 3: "INTER", 4: "WET", 5: "?"}.get(
             state.compound_encoded, "?"
         )
@@ -416,7 +416,7 @@ def list_sessions() -> list[dict[str, Any]]:
             preds = load_endpoint("strategy_predictions", session_key)
             entry["n_rows"] = len(preds)
             entry["n_drivers"] = int(preds["driver_number"].nunique()) if not preds.empty else 0
-        except Exception:  # noqa: BLE001
+        except Exception:
             entry["n_rows"] = 0
             entry["n_drivers"] = 0
 
@@ -434,13 +434,13 @@ def load_all_sessions_meta() -> dict[int, dict[str, Any]]:
     for key in storage.list_keys(f"{LOG_PREFIX}/sessions/"):
         try:
             df = storage.read_parquet(key)
-        except Exception:  # noqa: BLE001
+        except Exception:
             continue
         if df.empty or "session_key" not in df.columns:
             continue
         row = df.sort_values("date").iloc[-1]
         sk = int(row["session_key"])
-        meta[sk] = row.to_dict()
+        meta[sk] = {str(key): value for key, value in row.items()}
     return meta
 
 
@@ -467,7 +467,7 @@ def list_races() -> list[dict[str, Any]]:
         session_name = s.get("session_name") or "Race"
         races.append(
             {
-                "year": int(s.get("year") or datetime.now(timezone.utc).year),
+                "year": int(s.get("year") or datetime.now(UTC).year),
                 "race_folder": f"{label}_{session_name}".replace(" ", "_"),
                 "session_key": s["session_key"],
                 "n_drivers": s.get("n_drivers", 0),

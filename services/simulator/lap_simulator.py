@@ -44,8 +44,10 @@ def field_median_by_lap(race_df: pd.DataFrame) -> pd.Series:
         Series indexed by ``lap_number`` → median lap time in seconds.
     """
     clean = race_df[
-        race_df["is_accurate"].astype(bool)
-        & (race_df["track_status_encoded"] == 0)
+        (
+            (race_df["is_accurate"].fillna(False) & race_df["track_status_encoded"].eq(0))
+            | race_df["track_status_encoded"].isin([1, 2, 3, 4])
+        )
         & (~race_df["pit_in_this_lap"].astype(bool))
         & (~race_df["pit_out_this_lap"].astype(bool))
         & race_df["lap_time_s"].notna()

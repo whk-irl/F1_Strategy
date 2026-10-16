@@ -8,10 +8,10 @@ module maintains merged state and exposes records in the same shape that
 
 from __future__ import annotations
 
-import copy
 import contextlib
+import copy
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 # TrackStatus codes from the F1 feed (mirrors fastf1.livetiming.data mapping).
@@ -186,7 +186,8 @@ class TimingSnapshot:
             return None
         session_key = self.session_info.get("Key")
         meeting_key = meeting.get("Key")
-        if session_key is None and meeting_key is None:
+        resolved_key = session_key if session_key is not None else meeting_key
+        if resolved_key is None:
             return None
 
         circuit = meeting.get("Circuit")
@@ -197,13 +198,13 @@ class TimingSnapshot:
         session_name = self.session_info.get("Name") or self.session_info.get("Type") or "Session"
         date_start = self.session_info.get("StartDate") or meeting.get("StartDate")
 
-        year = datetime.now(timezone.utc).year
+        year = datetime.now(UTC).year
         if date_start:
             with contextlib.suppress(ValueError, TypeError):
                 year = int(str(date_start)[:4])
 
         return {
-            "session_key": int(session_key if session_key is not None else meeting_key),
+            "session_key": int(resolved_key),
             "meeting_key": int(meeting_key) if meeting_key is not None else None,
             "meeting_name": meeting.get("Name"),
             "country_name": country_name,

@@ -3126,7 +3126,7 @@ requires-dist = [
     { name = "scipy", specifier = ">=1.13" },
     { name = "signalrcore", specifier = ">=1.0.2" },
     { name = "stable-baselines3", specifier = ">=2.3" },
-    { name = "streamlit", specifier = ">=1.33" },
+    { name = "streamlit", specifier = ">=1.37" },
     { name = "torch", specifier = ">=2.2", index = "https://download.pytorch.org/whl/cu121" },
     { name = "tqdm", specifier = ">=4.66" },
     { name = "typer", specifier = ">=0.12" },

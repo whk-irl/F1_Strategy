@@ -8,6 +8,7 @@ knowing the internal model API.
 from __future__ import annotations
 
 import numpy as np
+import numpy.typing as npt
 import pandas as pd
 import torch
 import torch.nn as nn
@@ -18,8 +19,6 @@ from ml.models.tire_degradation.sequence_dataset import (
     SEQ_LEN,
     NormStats,
 )
-
-import numpy.typing as npt
 
 _F32Array = npt.NDArray[np.float32]
 
@@ -69,4 +68,4 @@ class SequenceTireWrapper:
         x = torch.from_numpy(normed.astype(np.float32))
         with torch.no_grad():
             preds = self._model(x).numpy()
-        return preds.astype(np.float32)
+        return np.asarray(preds, dtype=np.float32)
