@@ -5,7 +5,7 @@ Pitwall combines an animated Formula 1 race center with a historical race simula
 and an end-to-end machine-learning pipeline.
 
 [![CI](https://github.com/whk-irl/F1_Strategy/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/whk-irl/F1_Strategy/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green)](pyproject.toml)
 
 **[Open the live demo](https://f1strategy-forza.streamlit.app/)** ·
 [Training results](docs/model-cards/2026-10-15-retraining.md) ·
@@ -135,6 +135,6 @@ Streamlit Community Cloud app. See [architecture](docs/architecture.md) and
 
 ## License
 
-[MIT](LICENSE). Race data is supplied by [FastF1](https://docs.fastf1.dev/) and
+The project declares the [MIT license](pyproject.toml). Race data is supplied by [FastF1](https://docs.fastf1.dev/) and
 [OpenF1](https://openf1.org/). This project is unofficial and is not affiliated with
 Formula 1, the FIA, or any team.
