@@ -1,3 +1,14 @@
+---
+title: Pitwall AI
+emoji: 🏎️
+colorFrom: red
+colorTo: gray
+sdk: docker
+app_port: 8501
+pinned: false
+license: mit
+---
+
 # Pitwall AI
 
 Watch a race unfold, explore pit strategy, and reproduce the model training behind it.
