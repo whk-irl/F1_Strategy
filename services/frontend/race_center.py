@@ -18,6 +18,8 @@ from services.live.race_data import (
     session_catalog,
     timestamp,
 )
+from services.simulator.circuits import LOCATION_REFERENCE
+from services.simulator.pit_time import load_pit_time_model, predict_pit_time
 
 _component = components.declare_component(
     "pitwall_race_center", path=str(Path(__file__).parent / "race_center_component")
@@ -97,6 +99,15 @@ def render_race_center() -> None:
         "driver": driver,
     }
 
+    def pit_estimate(race_meta: dict[str, Any]) -> dict[str, Any] | None:
+        """Serve only past-race model statistics; current stops are blended in the UI."""
+        try:
+            model = load_pit_time_model()
+            venue = LOCATION_REFERENCE.get(str(race_meta.get("circuit_short_name", "")), 0)
+            return predict_pit_time(model, venue)
+        except (OSError, ValueError, KeyError):
+            return None
+
     @st.fragment(run_every="15s" if mode == "live" else None)
     def screen() -> None:
         payload = dict(base)
@@ -134,11 +145,13 @@ def render_race_center() -> None:
                     payload["race"], payload["telemetry"], payload["freshness"] = load_live(
                         feed, active, driver
                     )
+                    payload["pit_time"] = pit_estimate(active)
             elif meta:
                 with st.spinner(
                     "Preparing recorded positions and timing… First load caches the race locally."
                 ):
                     payload["race"] = _replay(meta)
+                    payload["pit_time"] = pit_estimate(meta)
                     payload["telemetry"] = _telemetry(
                         int(meta["session_key"]),
                         driver,

@@ -1,0 +1,257 @@
+{
+  "format_version": 1,
+  "target": "OpenF1 lane_duration plus observed adjacent-lap net race loss",
+  "train_scope": "2023 and 2025 races plus 2026 rounds 1\u201310",
+  "global": {
+    "sample_count": 1815,
+    "net_sample_count": 1127,
+    "lane_s": 23.382,
+    "lane_low_s": 18.9,
+    "lane_high_s": 29.9,
+    "net_loss_s": 22.562,
+    "net_low_s": 19.505,
+    "net_high_s": 28.043
+  },
+  "venues": {
+    "1": {
+      "sample_count": 42,
+      "net_sample_count": 24,
+      "lane_s": 24.482,
+      "lane_low_s": 23.016,
+      "lane_high_s": 27.211,
+      "net_loss_s": 23.185,
+      "net_low_s": 21.096,
+      "net_high_s": 26.663
+    },
+    "2": {
+      "sample_count": 19,
+      "net_sample_count": 16,
+      "lane_s": 21.816,
+      "lane_low_s": 19.753,
+      "lane_high_s": 25.388,
+      "net_loss_s": 21.52,
+      "net_low_s": 19.207,
+      "net_high_s": 25.103
+    },
+    "3": {
+      "sample_count": 116,
+      "net_sample_count": 16,
+      "lane_s": 18.66,
+      "lane_low_s": 14.323,
+      "lane_high_s": 23.293,
+      "net_loss_s": 22.562,
+      "net_low_s": 18.135,
+      "net_high_s": 28.121
+    },
+    "4": {
+      "sample_count": 88,
+      "net_sample_count": 58,
+      "lane_s": 23.794,
+      "lane_low_s": 22.584,
+      "lane_high_s": 27.429,
+      "net_loss_s": 22.947,
+      "net_low_s": 20.498,
+      "net_high_s": 26.366
+    },
+    "5": {
+      "sample_count": 43,
+      "net_sample_count": 29,
+      "lane_s": 23.079,
+      "lane_low_s": 21.603,
+      "lane_high_s": 26.81,
+      "net_loss_s": 22.556,
+      "net_low_s": 19.975,
+      "net_high_s": 26.776
+    },
+    "6": {
+      "sample_count": 40,
+      "net_sample_count": 21,
+      "lane_s": 22.842,
+      "lane_low_s": 21.33,
+      "lane_high_s": 25.354,
+      "net_loss_s": 20.865,
+      "net_low_s": 18.458,
+      "net_high_s": 23.398
+    },
+    "7": {
+      "sample_count": 36,
+      "net_sample_count": 13,
+      "lane_s": 28.574,
+      "lane_low_s": 27.03,
+      "lane_high_s": 31.161,
+      "net_loss_s": 25.699,
+      "net_low_s": 22.949,
+      "net_high_s": 30.821
+    },
+    "8": {
+      "sample_count": 100,
+      "net_sample_count": 52,
+      "lane_s": 24.07,
+      "lane_low_s": 19.873,
+      "lane_high_s": 26.445,
+      "net_loss_s": 21.139,
+      "net_low_s": 18.829,
+      "net_high_s": 24.094
+    },
+    "9": {
+      "sample_count": 148,
+      "net_sample_count": 62,
+      "lane_s": 23.629,
+      "lane_low_s": 18.253,
+      "lane_high_s": 27.68,
+      "net_loss_s": 20.642,
+      "net_low_s": 18.988,
+      "net_high_s": 25.401
+    },
+    "10": {
+      "sample_count": 144,
+      "net_sample_count": 123,
+      "lane_s": 22.521,
+      "lane_low_s": 21.632,
+      "lane_high_s": 24.462,
+      "net_loss_s": 23.493,
+      "net_low_s": 21.034,
+      "net_high_s": 26.242
+    },
+    "11": {
+      "sample_count": 136,
+      "net_sample_count": 88,
+      "lane_s": 21.669,
+      "lane_low_s": 17.476,
+      "lane_high_s": 26.224,
+      "net_loss_s": 21.803,
+      "net_low_s": 20.303,
+      "net_high_s": 26.872
+    },
+    "12": {
+      "sample_count": 109,
+      "net_sample_count": 40,
+      "lane_s": 28.443,
+      "lane_low_s": 27.458,
+      "lane_high_s": 34.494,
+      "net_loss_s": 28.31,
+      "net_low_s": 21.292,
+      "net_high_s": 34.942
+    },
+    "13": {
+      "sample_count": 65,
+      "net_sample_count": 65,
+      "lane_s": 22.024,
+      "lane_low_s": 20.784,
+      "lane_high_s": 24.97,
+      "net_loss_s": 21.626,
+      "net_low_s": 19.959,
+      "net_high_s": 24.915
+    },
+    "14": {
+      "sample_count": 91,
+      "net_sample_count": 71,
+      "lane_s": 23.656,
+      "lane_low_s": 22.522,
+      "lane_high_s": 27.183,
+      "net_loss_s": 21.216,
+      "net_low_s": 17.307,
+      "net_high_s": 28.573
+    },
+    "15": {
+      "sample_count": 124,
+      "net_sample_count": 44,
+      "lane_s": 20.318,
+      "lane_low_s": 17.714,
+      "lane_high_s": 31.815,
+      "net_loss_s": 22.136,
+      "net_low_s": 15.423,
+      "net_high_s": 27.72
+    },
+    "16": {
+      "sample_count": 44,
+      "net_sample_count": 43,
+      "lane_s": 24.339,
+      "lane_low_s": 22.915,
+      "lane_high_s": 27.584,
+      "net_loss_s": 24.712,
+      "net_low_s": 22.993,
+      "net_high_s": 27.461
+    },
+    "17": {
+      "sample_count": 21,
+      "net_sample_count": 17,
+      "lane_s": 21.656,
+      "lane_low_s": 19.639,
+      "lane_high_s": 24.758,
+      "net_loss_s": 21.888,
+      "net_low_s": 19.938,
+      "net_high_s": 25.288
+    },
+    "18": {
+      "sample_count": 46,
+      "net_sample_count": 23,
+      "lane_s": 28.155,
+      "lane_low_s": 22.863,
+      "lane_high_s": 32.121,
+      "net_loss_s": 23.138,
+      "net_low_s": 21.131,
+      "net_high_s": 28.69
+    },
+    "19": {
+      "sample_count": 57,
+      "net_sample_count": 55,
+      "lane_s": 24.14,
+      "lane_low_s": 22.823,
+      "lane_high_s": 26.047,
+      "net_loss_s": 21.356,
+      "net_low_s": 19.788,
+      "net_high_s": 23.928
+    },
+    "20": {
+      "sample_count": 47,
+      "net_sample_count": 38,
+      "lane_s": 22.796,
+      "lane_low_s": 21.503,
+      "lane_high_s": 28.49,
+      "net_loss_s": 22.618,
+      "net_low_s": 20.726,
+      "net_high_s": 28.289
+    },
+    "21": {
+      "sample_count": 87,
+      "net_sample_count": 67,
+      "lane_s": 23.486,
+      "lane_low_s": 20.622,
+      "lane_high_s": 27.545,
+      "net_loss_s": 22.35,
+      "net_low_s": 20.873,
+      "net_high_s": 25.463
+    },
+    "22": {
+      "sample_count": 54,
+      "net_sample_count": 29,
+      "lane_s": 22.197,
+      "lane_low_s": 20.663,
+      "lane_high_s": 29.414,
+      "net_loss_s": 22.756,
+      "net_low_s": 20.038,
+      "net_high_s": 27.605
+    },
+    "23": {
+      "sample_count": 94,
+      "net_sample_count": 70,
+      "lane_s": 28.187,
+      "lane_low_s": 26.807,
+      "lane_high_s": 32.489,
+      "net_loss_s": 26.793,
+      "net_low_s": 25.25,
+      "net_high_s": 30.292
+    },
+    "24": {
+      "sample_count": 64,
+      "net_sample_count": 63,
+      "lane_s": 22.05,
+      "lane_low_s": 20.96,
+      "lane_high_s": 24.012,
+      "net_loss_s": 22.454,
+      "net_low_s": 20.866,
+      "net_high_s": 24.999
+    }
+  }
+}

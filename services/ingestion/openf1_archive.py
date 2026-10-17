@@ -95,9 +95,14 @@ def canonical_laps(records: dict[str, list[dict[str, Any]]], origin: pd.Timestam
     out["PitInTime"] = pd.Series(pd.NaT, index=out.index, dtype="timedelta64[ns]")
     out["PitOutTime"] = pd.Series(pd.NaT, index=out.index, dtype="timedelta64[ns]")
     for pit in records["pit"]:
-        mask = out["DriverNumber"].eq(str(pit["driver_number"])) & out["LapNumber"].eq(
-            pit["lap_number"]
-        )
+        pit_lap = int(pit["lap_number"])
+        pit_driver = str(pit["driver_number"])
+        # OpenF1 generally numbers the stop by its pit-out lap. Align the
+        # in-lap flag with the preceding lap when the out-lap marker confirms it.
+        out_lap = laps[laps["driver_number"].eq(int(pit_driver)) & laps["lap_number"].eq(pit_lap)]
+        if not out_lap.empty and bool(out_lap["is_pit_out_lap"].iloc[0]):
+            pit_lap -= 1
+        mask = out["DriverNumber"].eq(str(pit["driver_number"])) & out["LapNumber"].eq(pit_lap)
         out.loc[mask, "PitInTime"] = pd.Timestamp(pit["date"]) - origin
     out.loc[laps["is_pit_out_lap"].fillna(False), "PitOutTime"] = out["LapStartTime"]
     out["Position"] = np.nan

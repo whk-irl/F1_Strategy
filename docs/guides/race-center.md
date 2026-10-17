@@ -56,18 +56,31 @@ mocked live-feed contracts, with no active-session subscription available.
 
 ## Strategy panel
 
-The race center's desk is a **nominal planning reference**, not the trained PPO policy.
-It runs finite-horizon dynamic programming over stay/soft/medium/hard actions with a
-22-second pit loss (13.2 seconds under neutralisation), base degradation rates
+The race center's desk is a **nominal planning reference**, separate from the trained
+PPO policy. Its pit-lane estimate comes from [measured OpenF1 stops](../model-cards/2026-10-16-pit-time-retraining.md)
+at the circuit. As earlier routine stops arrive in the selected race, their median
+updates the estimate without reading future replay records. The panel also shows the
+last recorded lane time for the selected driver. Extended stops remain visible but
+are excluded from the routine forecast.
+
+The estimated race-time loss uses the difference between observed in/out laps and
+nearby clean laps; it is less certain than lane time. During a safety car or VSC,
+the nominal planner applies a 0.6 adjustment to that loss. It compares estimated
+loss with current same-lap gaps to project a rejoin position and flags a nearby rival
+who recently stopped as an undercut watch. This is a timing estimate, not a guarantee:
+traffic, tyre warm-up, unusual pit service and changing gaps can alter the result.
+
+The desk runs finite-horizon dynamic programming over stay/soft/medium/hard actions
+with measured-history pit cost, base degradation rates
 0.08/0.05/0.03 seconds per lap of age, cliff ages 22/32/42 and compound offsets
 0/0.25/0.55 seconds. It enforces two dry compounds; a stop changes tyres on the
-following lap. These are illustrative assumptions, independent of the calibrated
-simulator's evaluation DP. The desk ignores traffic, tyre inventory and future weather,
+following lap. The degradation parameters are illustrative and independent of the
+calibrated simulator's evaluation DP. The desk ignores tyre inventory and future weather,
 and suspends recommendations for red flags, wet states or missing driver data.
 Live timing also suspends the nominal plan because the feed does not confirm the
 scheduled race distance; it does not treat the last observed lap as the final lap.
 
-The [retraining model card](../model-cards/2026-10-15-retraining.md) records the actual
+The [retraining model card](../model-cards/2026-10-16-pit-time-retraining.md) records the actual
 BC → PPO → fine-tuning result and why the new checkpoint was not promoted.
 Strategy Lab continues to expose the baked model experiments separately.
 

@@ -69,6 +69,7 @@ from services.simulator.lap_simulator import (
     driver_baseline_delta,
     field_median_by_lap,
 )
+from services.simulator.pit_time import DEFAULT_MODEL, load_pit_time_model, predict_pit_time
 
 _ACTION_TO_COMPOUND: dict[int, int] = {1: 0, 2: 1, 3: 2}
 
@@ -328,6 +329,11 @@ class F1RaceEnv(gym.Env[np.ndarray, int]):
         elif "year" in race_df:
             round_num = legacy_reference(int(race_df["year"].iloc[0]), round_num)
         self._pit_loss_s = _PIT_LOSS_BY_ROUND.get(round_num, self._default_pit_loss_s)
+        self._pit_loss_source = "legacy circuit assumption"
+        if DEFAULT_MODEL.exists():
+            estimate = predict_pit_time(load_pit_time_model(), round_num)
+            self._pit_loss_s = estimate["net_loss_s"]
+            self._pit_loss_source = "measured pit-time model"
 
         # Circuit + temperature calibrated degradation parameters.
         track_temp = self._estimate_track_temp(race_df)
