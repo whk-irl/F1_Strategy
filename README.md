@@ -20,6 +20,7 @@ and an end-to-end machine-learning pipeline.
 
 **[Open the live demo](https://f1strategy-forza.streamlit.app/)** ·
 [Training results](docs/model-cards/2026-10-16-pit-time-retraining.md) ·
+[Temporal IQL design](docs/decisions/0006-temporal-iql.md) ·
 [Race Center guide](docs/guides/race-center.md)
 
 ![Race Center: circuit positions, classification, telemetry and strategy panels](docs/assets/race-center.png)
@@ -33,8 +34,9 @@ samples around a recorded circuit trace, with smooth interpolation between sampl
   and selected-car views.
 - **Race panels:** classification and gaps, tyre compounds and stint history, speed,
   gear, throttle, brake, completed-lap sectors, weather, and race-control messages.
-- **Pit window:** measured-history pit-lane time, estimated race-time loss, projected
-  rejoin position from current gaps, and an undercut watch for nearby rivals.
+- **Strategy command:** compare boxing now, the model window, and extending the stint;
+  see measured pit loss, projected rejoin range, and named undercut/overcut rivals with
+  their tyre compound, age, gap, and recent-stop state.
 - **Playback:** pause, seek, restart, and replay at 1×–60×. Timing follows the replay cursor.
 - **Strategy Lab:** compare the baked model experiments and read the latest published
   pretraining and fine-tuning results.
@@ -68,6 +70,13 @@ episodes across three eligible events and one training seed. Both simulator gate
 passed the required Spearman rho ≥ 0.7 (0.828 and 0.821). The independent measured
 pit-time model is available to Race Center regardless of policy promotion.
 
+The next research candidate is now implemented as **temporal implicit Q-learning**:
+a causal Transformer over 12 laps, double offline Q estimates, expectile value
+learning, advantage-weighted behavior fitting, and a two-compound rule shield. The
+new acquisition profile adds verified 2021 races to the 2022–2026 corpus and is
+configured for multi-seed GPU training on SLURM. A one-epoch local smoke run completed
+the offline-policy path; its score is an integration check rather than a model result.
+
 Read the [model card](docs/model-cards/2026-10-16-pit-time-retraining.md) for splits, uncertainty,
 supporting-model metrics and limitations, and the [algorithm decision](docs/decisions/0005-staged-policy-training.md)
 for the research behind the method. The race-center strategy desk is a labelled
@@ -100,6 +109,11 @@ uv run python -m services.ingestion.acquire --years 2026 --provider auto
 uv run python scripts/acquire_pit_history.py --years 2023,2024,2025,2026
 uv run python -m ml.pipelines.pit_time
 uv run python -m ml.pipelines.train --config configs/training.pit-time.json
+
+# Larger offline-RL candidate (local or SLURM)
+uv run python -m services.ingestion.acquire --years 2021 --provider fastf1
+uv run python -m ml.pipelines.train_iql --config configs/training.iql-hpc.json --resume
+# sbatch infra/slurm/train_temporal_iql.sbatch
 ```
 
 ```mermaid
@@ -139,7 +153,7 @@ uv run mypy services/ ml/
 uv run pytest
 ```
 
-The October 16 update passed **167 tests with 89.14% configured coverage**, plus Ruff
+The temporal-IQL update passes **171 tests with 89.24% configured coverage**, plus Ruff
 and mypy checks. Replay controls and desktop/mobile layouts were checked in the
 browser. Authenticated active-session timing still requires verification during a race.
 

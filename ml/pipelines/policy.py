@@ -271,7 +271,7 @@ class DynamicProgramming:
 
 
 def evaluate(
-    model: PPO | None,
+    model: Any | None,
     df: pd.DataFrame,
     tire: Any,
     sc: Any,
