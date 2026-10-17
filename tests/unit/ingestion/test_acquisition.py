@@ -9,6 +9,7 @@ from unittest.mock import Mock
 import pandas as pd
 import pytest
 import requests
+from fastf1.exceptions import DataNotLoadedError
 from services.ingestion import acquire as acquisition
 from services.ingestion.acquire import AcquisitionConfig, acquire, file_sha256, write_parquet
 from services.ingestion.openf1_archive import ArchiveClient, canonical_laps
@@ -181,3 +182,10 @@ def test_auto_provider_records_fallback(local_acquisition, monkeypatch):
     result = acquire(local_acquisition)
     assert result["sessions"]["2026/01/R"]["source"] == "OpenF1"
     assert fallback.call_count == 1
+
+
+def test_session_origin_falls_back_to_schedule_for_laps_only_load():
+    session = Mock()
+    type(session).t0_date = property(lambda _: (_ for _ in ()).throw(DataNotLoadedError))
+    session.event = {"Session5DateUtc": pd.Timestamp("2021-03-28T15:00:00")}
+    assert acquisition.session_origin(session) == pd.Timestamp("2021-03-28T15:00:00Z")
