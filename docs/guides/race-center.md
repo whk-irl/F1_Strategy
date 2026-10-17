@@ -28,6 +28,9 @@ Lap and sector times appear only once a lap is completed. Gaps older than 45 sec
 and onboard samples older than three seconds display as unavailable. Cars with no
 recent lap data are marked **NO DATA**, rather than inferring a formal retirement.
 Playback pauses on initial load when the browser requests reduced motion.
+Every race selection and fresh page load starts at lights out; playback position is
+not restored from browser storage. Display preferences such as speed and map labels
+are retained.
 The browser animates locally; it does not call the provider for every frame.
 
 ## Live sessions
@@ -66,9 +69,13 @@ are excluded from the routine forecast.
 The estimated race-time loss uses the difference between observed in/out laps and
 nearby clean laps; it is less certain than lane time. During a safety car or VSC,
 the nominal planner applies a 0.6 adjustment to that loss. It compares estimated
-loss with current same-lap gaps to project a rejoin position and flags a nearby rival
-who recently stopped as an undercut watch. This is a timing estimate, not a guarantee:
-traffic, tyre warm-up, unusual pit service and changing gaps can alter the result.
+loss with current same-lap gaps to project a rejoin position and uncertainty range.
+The command panel compares boxing now, the model window, and a three-lap extension.
+Its rival battle tracks up to three cars within 15 seconds, including their compound,
+tyre age, relative gap and recent-stop state. It distinguishes a fresh-tyre undercut
+threat, an undercut already in progress, an overcut opportunity, and a nearby attack
+target. This is a timing estimate, not a guarantee: traffic, tyre warm-up, unusual pit
+service and changing gaps can alter the result.
 
 The desk runs finite-horizon dynamic programming over stay/soft/medium/hard actions
 with measured-history pit cost, base degradation rates
@@ -76,7 +83,8 @@ with measured-history pit cost, base degradation rates
 0/0.25/0.55 seconds. It enforces two dry compounds; a stop changes tyres on the
 following lap. The degradation parameters are illustrative and independent of the
 calibrated simulator's evaluation DP. The desk ignores tyre inventory and future weather,
-and suspends recommendations for red flags, wet states or missing driver data.
+and holds the call during red flags. Rain and wet-compound states switch the panel to
+a weather crossover call rather than applying the dry optimization.
 Live timing also suspends the nominal plan because the feed does not confirm the
 scheduled race distance; it does not treat the last observed lap as the final lap.
 

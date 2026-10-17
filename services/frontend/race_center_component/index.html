@@ -52,12 +52,19 @@
           <div class="driver-stats"><div><span>INTERVAL</span><b id="driver-interval">—</b></div><div><span>PIT STOPS</span><b id="driver-stops">0</b></div><div><span>LAST PIT LANE</span><b id="driver-last-pit">—</b></div><div><span>CURRENT LAP</span><b id="driver-lap">—</b></div></div>
           <div class="tyre-state"><span id="tyre-badge" class="tyre medium">M</span><div><b id="tyre-name">MEDIUM</b><span id="tyre-age">— LAPS ON TYRE</span></div><span id="stint-label">STINT —</span></div><div id="stint-history" class="stint-history" aria-label="Recorded tyre stint history"></div>
         </section>
-        <section class="panel strategy-panel" aria-label="Strategy reference">
-          <div class="panel-heading"><h2>Strategy desk</h2><span class="strategy-badge">REFERENCE</span></div>
-          <div class="strategy-call"><span class="eyebrow">NOMINAL DRY PLAN</span><h3 id="strategy-action">Stay out</h3><p id="strategy-detail">Calculating remaining stint…</p></div>
-          <div class="strategy-metrics"><div><span>PREDICTED PIT-LANE TIME</span><b id="pit-lane">—</b></div><div><span>EST. RACE-TIME LOSS</span><b id="pit-loss">—</b></div><div><span>NEXT COMPOUND</span><b id="next-compound">—</b></div></div>
-          <p class="pit-range" id="pit-range">Measured-history forecast loading…</p><p class="pit-risk" id="pit-risk">Rejoin position unavailable</p>
-          <div class="plan-bar" id="plan-bar"></div><p class="strategy-footnote">Lane time comes from recorded OpenF1 stops; race-time loss estimates the extra time against nearby clean laps. Extended stops are excluded from the routine forecast. Rejoin position uses current gaps and is uncertain. Dynamic programming remains a research reference.</p>
+        <section class="panel strategy-panel" aria-label="Pit strategy command center">
+          <div class="panel-heading"><div><h2>Strategy command</h2><span class="strategy-live"><i></i> LAP-BY-LAP</span></div><span class="strategy-badge">RACE MODEL</span></div>
+          <div class="strategy-call"><span class="eyebrow">PRIMARY CALL</span><h3 id="strategy-action">Stay out</h3><p id="strategy-detail">Calculating the pit window and rival response…</p></div>
+          <div class="strategy-metrics"><div><span>PIT WINDOW</span><b id="pit-window">—</b></div><div><span>REJOIN</span><b id="rejoin-position">—</b></div><div><span>RACE-TIME LOSS</span><b id="pit-loss">—</b></div><div><span>FIT</span><b id="next-compound">—</b></div></div>
+          <div class="strategy-scenarios" aria-label="Pit scenario comparison">
+            <div class="scenario-card" id="scenario-now"><span>BOX NOW</span><b id="scenario-now-value">—</b><small id="scenario-now-detail">Calculating</small></div>
+            <div class="scenario-card preferred" id="scenario-plan"><span>MODEL WINDOW</span><b id="scenario-plan-value">—</b><small id="scenario-plan-detail">Calculating</small></div>
+            <div class="scenario-card" id="scenario-late"><span>EXTEND +3</span><b id="scenario-late-value">—</b><small id="scenario-late-detail">Calculating</small></div>
+          </div>
+          <div class="rival-section"><div class="section-label"><span>RIVAL BATTLE</span><small id="rival-summary">Scanning nearby cars</small></div><div id="strategy-rivals" class="strategy-rivals"></div></div>
+          <p class="pit-risk" id="pit-risk">Rejoin position unavailable</p>
+          <details class="forecast-detail"><summary>Measured pit forecast <span id="pit-lane">—</span></summary><p class="pit-range" id="pit-range">Measured-history forecast loading…</p></details>
+          <div class="plan-bar" id="plan-bar"></div><p class="strategy-footnote">Recommendation combines measured pit loss, tyre age, race state, nearby gaps, rival tyres and recent stops. Rejoin outcomes are ranges, not guarantees. The dry-race dynamic program is a research reference.</p>
         </section>
         <section class="panel control-panel" aria-label="Race control messages"><div class="panel-heading"><h2>Race control</h2><span class="control-icon">◉</span></div><div id="race-messages" role="log" aria-live="off"></div></section>
       </aside>

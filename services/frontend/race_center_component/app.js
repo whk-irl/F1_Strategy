@@ -15,7 +15,7 @@ function lapTime(t){return t==null?'—':`${Math.floor(t/60)}:${(t%60).toFixed(3
 function gap(v,leader=false){return leader?'LEADER':v==null?'—':typeof v==='number'?`+${v.toFixed(3)}`:String(v);}
 function latest(rows,t,column=0){let lo=0,hi=(rows||[]).length;while(lo<hi){const mid=(lo+hi)>>>1;if(rows[mid][column]<=t)lo=mid+1;else hi=mid;}return lo?rows[lo-1]:null;}
 function latestEvent(rows,t){let lo=0,hi=(rows||[]).length;while(lo<hi){const mid=(lo+hi)>>>1;if(rows[mid].t<=t)lo=mid+1;else hi=mid;}return lo?rows[lo-1]:null;}
-function save(){if(!state.race)return;try{sessionStorage.setItem('pitwall-playback',JSON.stringify({id:state.race.id,t:state.t,playing:state.playing,speed:state.speed,labels:state.labels,follow:state.follow}));}catch(_){}}
+function save(){if(!state.race)return;try{sessionStorage.setItem('pitwall-preferences',JSON.stringify({speed:state.speed,labels:state.labels,follow:state.follow}));}catch(_){}}
 function setOptions(id,values,selected){const el=$(id);el.replaceChildren(...values.map(([v,label])=>{const op=document.createElement('option');op.value=v;op.textContent=label;return op;}));el.value=selected;}
 function render(payload){
   state.payload=payload;
@@ -28,8 +28,8 @@ function render(payload){
   if(payload.notice){state.race=null;txt('notice-title',payload.notice.title);txt('notice-detail',payload.notice.detail);txt('event-title','Live race center');txt('event-subtitle','Connected to the paddock. Ready when the lights go out.');txt('round-title',`OPENF1 / ${payload.year}`);height();return;}
   const race=payload.race;if(!race)return;
   if(state.race?.id!==race.id){
-    state.t=Math.min(race.duration*.53,3600);state.planKey=null;
-    try{const saved=JSON.parse(sessionStorage.getItem('pitwall-playback'));if(saved?.id===race.id){state.t=saved.t;state.playing=saved.playing;state.speed=saved.speed;state.labels=saved.labels;state.follow=saved.follow;}}catch(_){}
+    state.t=0;state.planKey=null;state.playing=!matchMedia('(prefers-reduced-motion: reduce)').matches;
+    try{const saved=JSON.parse(sessionStorage.getItem('pitwall-preferences'));if(saved){state.speed=saved.speed||1;state.labels=saved.labels!==false;state.follow=!!saved.follow;}}catch(_){}
   }
   state.race=race;state.driver=payload.driver;
   if(!race.drivers.some(d=>d.driver_number===state.driver))state.driver=race.drivers[0]?.driver_number;
@@ -154,52 +154,86 @@ function pitForecast(flag){
     net:Math.max(0,base.net_loss_s+shift)*factor,netLow:Math.max(0,base.net_low_s+shift)*factor,
     netHigh:Math.max(0,base.net_high_s+shift)*factor,observed:measured.length};
 }
-function projectedRejoin(loss){
+function timingContext(){
   const r=state.race,n=state.driver,ownPos=latest(r.positions[n],state.t)?.[1],ownLap=currentLap(n)?.[2];
-  const ownGap=latest(r.intervals[n],state.t),ownTime=ownPos===1?0:Number(ownGap?.[1]);
-  if(!ownPos||!Number.isFinite(ownTime)||!ownLap||(ownPos!==1&&(!ownGap||state.t-ownGap[0]>45)))return null;
-  let comparable=0,passed=0;
-  for(const d of r.drivers){const other=d.driver_number;if(other===n||isOut(other)||currentLap(other)?.[2]!==ownLap)continue;
-    const position=latest(r.positions[other],state.t)?.[1],interval=latest(r.intervals[other],state.t);
-    if(position<=ownPos||!interval||state.t-interval[0]>45)continue;
-    const gapBehind=Number(interval[1])-ownTime;if(!Number.isFinite(gapBehind)||gapBehind<=0)continue;
-    comparable++;if(gapBehind<loss)passed++;
+  const ownInterval=latest(r.intervals[n],state.t),ownGap=ownPos===1?0:Number(ownInterval?.[1]);
+  if(!ownPos||!ownLap||!Number.isFinite(ownGap)||(ownPos!==1&&(!ownInterval||state.t-ownInterval[0]>45)))return null;
+  const rivals=[];
+  for(const driver of r.drivers){
+    const number=driver.driver_number;if(number===n||isOut(number)||currentLap(number)?.[2]!==ownLap)continue;
+    const position=latest(r.positions[number],state.t)?.[1],interval=latest(r.intervals[number],state.t);
+    if(!position||!interval||state.t-interval[0]>45)continue;
+    const otherGap=position===1?0:Number(interval[1]);if(!Number.isFinite(otherGap))continue;
+    const delta=otherGap-ownGap,stint=currentStint(number,ownLap);
+    const tyreAge=stint?Math.max(0,ownLap-stint.lap_start+(stint.tyre_age_at_start||0)):null;
+    const recentPit=r.pits.some(stop=>stop.driver_number===number&&stop.t<=state.t&&state.t-stop.t<180);
+    rivals.push({driver,number,position,delta,relation:delta<0?'AHEAD':'BEHIND',compound:stint?.compound||'UNKNOWN',age:tyreAge,recentPit});
   }
-  return comparable?ownPos+passed:null;
+  return {ownPos,ownLap,ownGap,rivals:rivals.sort((a,b)=>Math.abs(a.delta)-Math.abs(b.delta))};
 }
-function undercutWatch(){
-  const r=state.race,n=state.driver,p=latest(r.positions[n],state.t)?.[1],lap=currentLap(n)?.[2];
-  if(!p||!lap)return null;
-  const own=latest(r.intervals[n],state.t),ownGap=p===1?0:Number(own?.[1]);
-  if(!Number.isFinite(ownGap))return null;
-  for(const rival of r.drivers){const other=rival.driver_number,otherP=latest(r.positions[other],state.t)?.[1];
-    if(otherP<=p||currentLap(other)?.[2]!==lap)continue;
-    const recent=r.pits.some(stop=>stop.driver_number===other&&stop.t<=state.t&&state.t-stop.t<180);
-    if(!recent)continue;
-    const gap=latest(r.intervals[other],state.t),seconds=Number(gap?.[1])-ownGap;
-    if(gap&&state.t-gap[0]<45&&seconds>0&&seconds<10)return rival.name_acronym||`#${other}`;
+function rejoinAnalysis(loss,context){
+  if(!context)return null;
+  const lostTo=context.rivals.filter(r=>r.delta>0&&r.delta<loss).sort((a,b)=>a.delta-b.delta);
+  const firstClear=context.rivals.filter(r=>r.delta>0&&r.delta>=loss).sort((a,b)=>a.delta-b.delta)[0];
+  return {position:context.ownPos+lostTo.length,lostTo,margin:firstClear?firstClear.delta-loss:null};
+}
+function classifyRival(rival,ownAge){
+  if(rival.relation==='BEHIND'&&rival.recentPit)return {label:'UNDERCUT',tone:'threat'};
+  if(rival.relation==='BEHIND'&&rival.delta<3&&rival.age!=null&&ownAge!=null&&rival.age+3<ownAge)return {label:'UNDERCUT RISK',tone:'threat'};
+  if(rival.relation==='AHEAD'&&rival.recentPit)return {label:'OVERCUT CHANCE',tone:'opportunity'};
+  if(rival.relation==='AHEAD'&&Math.abs(rival.delta)<5)return {label:'ATTACK',tone:'opportunity'};
+  return {label:rival.relation==='AHEAD'?'TARGET':'COVER',tone:''};
+}
+function renderRivals(context,ownAge){
+  const container=$('strategy-rivals');container.replaceChildren();
+  const nearby=context?.rivals.filter(r=>Math.abs(r.delta)<=15).slice(0,3)||[];
+  txt('rival-summary',nearby.length?`${nearby.length} car${nearby.length===1?'':'s'} inside 15 seconds`:'No comparable nearby timing');
+  for(const rival of nearby){
+    const status=classifyRival(rival,ownAge),row=document.createElement('div');
+    row.className=`rival-row ${status.tone}`;row.style.setProperty('--team',`#${rival.driver.team_colour||'73839b'}`);
+    const relation=document.createElement('span'),name=document.createElement('b'),tyre=document.createElement('span'),risk=document.createElement('span');
+    relation.className='relation';relation.textContent=rival.relation;name.textContent=`${rival.driver.name_acronym||rival.number} · ${rival.delta<0?'−':'+'}${fixed(Math.abs(rival.delta))}s`;
+    tyre.className='rival-tyre';tyre.style.setProperty('--tyre',tyreColors[rival.compound]||tyreColors.UNKNOWN);tyre.textContent=`${rival.compound[0]||'?'} · ${rival.age??'—'}L`;
+    risk.className='rival-risk';risk.textContent=status.label;row.append(relation,name,tyre,risk);container.append(row);
   }
-  return null;
+  if(!nearby.length){const empty=document.createElement('p');empty.className='empty-message';empty.textContent='Timing gaps will populate after the opening lap.';container.append(empty);}
+  return nearby.map(r=>({...r,status:classifyRival(r,ownAge)}));
 }
 function updateStrategy(compound,age,lap,history,flag,weather){
   const finished=(completedLap(state.driver)?.[2]||0)>=state.race.total_laps;
   const dry=['SOFT','MEDIUM','HARD'],remaining=finished?0:Math.max(0,state.race.total_laps-lap+1),forecast=pitForecast(flag),pitLoss=forecast?.net;
   txt('pit-lane',forecast?`${fixed(forecast.lane)} s`:'—');txt('pit-loss',forecast?`${fixed(pitLoss)} s`:'—');
   txt('pit-range',forecast?`Historical 10–90% lane range ${fixed(forecast.low)}–${fixed(forecast.high)} s · nominal loss range ${fixed(forecast.netLow)}–${fixed(forecast.netHigh)} s · ${forecast.observed} earlier routine stops in this race`:'No measured pit-time model available.');
-  const risk=$('pit-risk'),rejoin=forecast?projectedRejoin(pitLoss):null,low=forecast?projectedRejoin(forecast.netLow):null,high=forecast?projectedRejoin(forecast.netHigh):null,watch=undercutWatch();
-  risk.classList.toggle('warning',rejoin!=null&&rejoin>(latest(state.race.positions[state.driver],state.t)?.[1]||99)||!!watch);
-  const positionText=rejoin==null?'Rejoin position unavailable · waiting for comparable timing gaps':`Pit now: projected rejoin P${rejoin}${low!=null&&high!=null?` (P${low}–P${high} range)`:''}`;
-  txt('pit-risk',`${positionText}${watch?` · UNDERCUT WATCH: ${watch} stopped recently`:''}`);
-  const key=[state.race.id,state.driver,lap,compound,age,flag.flag,isOut(state.driver),finished,state.payload.mode,weather?.rainfall,Math.round((pitLoss||0)*2)].join('|');if(state.planKey===key)return;state.planKey=key;
+  const context=timingContext(),rivals=renderRivals(context,age),rejoin=forecast?rejoinAnalysis(pitLoss,context):null,low=forecast?rejoinAnalysis(forecast.netLow,context):null,high=forecast?rejoinAnalysis(forecast.netHigh,context):null;
+  const threat=rivals.find(r=>r.status.tone==='threat'),opportunity=rivals.find(r=>r.status.label==='OVERCUT CHANCE'),risk=$('pit-risk');
+  txt('rejoin-position',rejoin?`P${rejoin.position}`:'—');
+  risk.classList.toggle('warning',!!threat||(rejoin&&rejoin.position>context?.ownPos));
+  const positionText=rejoin==null?'Rejoin projection waiting for stable timing gaps':`Pit now projects P${rejoin.position}${low&&high?` · range P${low.position}–P${high.position}`:''}${rejoin.margin!=null?` · ${fixed(rejoin.margin)}s clean-air margin`:''}`;
+  const battleText=threat?` · ${threat.status.label}: ${threat.driver.name_acronym} ${fixed(Math.abs(threat.delta))}s behind`:opportunity?` · OVERCUT: ${opportunity.driver.name_acronym} has stopped` : '';
+  txt('pit-risk',positionText+battleText);
+  const key=[state.race.id,state.driver,lap,compound,age,flag.flag,isOut(state.driver),finished,state.payload.mode,weather?.rainfall,Math.round((pitLoss||0)*2),rejoin?.position,threat?.number,opportunity?.number].join('|');if(state.planKey===key)return;state.planKey=key;
   $('plan-bar').replaceChildren();
-  if(pitLoss==null){txt('strategy-action','Plan unavailable');txt('strategy-detail','No measured pit-time forecast is available for this race.');txt('next-compound','—');return;}
-  if(state.payload.mode==='live'){txt('strategy-action','Plan unavailable');txt('strategy-detail','The live feed does not confirm total race distance. Use Strategy Lab for a configured simulation.');txt('next-compound','—');return;}
-  if(!dry.includes(compound)||weather?.rainfall||isOut(state.driver)||remaining===0||remaining>100||flag.flag==='RED FLAG'){txt('strategy-action',isOut(state.driver)?'No lap data':remaining===0?'Race complete':flag.flag==='RED FLAG'?'Race suspended':'Plan unavailable');txt('strategy-detail','The nominal dry model does not cover this race state.');txt('next-compound','—');return;}
+  const unavailable=message=>{txt('strategy-action','Plan unavailable');txt('strategy-detail',message);txt('pit-window','—');txt('next-compound','—');for(const suffix of ['now','plan','late']){txt(`scenario-${suffix}-value`,'—');txt(`scenario-${suffix}-detail`,'Unavailable');}};
+  const situation=(action,message,fit,window)=>{txt('strategy-action',action);txt('strategy-detail',message);txt('pit-window',window);txt('next-compound',fit);txt('scenario-now-value',action);txt('scenario-now-detail',message);txt('scenario-plan-value',window);txt('scenario-plan-detail',`${fit} transition`);txt('scenario-late-value','REASSESS');txt('scenario-late-detail','Monitor race control and rival stops');};
+  if(pitLoss==null){unavailable('No measured pit-time forecast is available for this race.');return;}
+  if(state.payload.mode==='live'){unavailable('Live race distance is not confirmed. Rival timing remains visible while the model waits.');return;}
+  if(flag.flag==='RED FLAG'){situation('Hold position','Race is suspended. Preserve tyre choice until restart conditions are confirmed.',compound,'RESTART');return;}
+  if(weather?.rainfall&&!['INTERMEDIATE','WET'].includes(compound)){situation('Prepare intermediates','Rain is recorded at the circuit. Confirm grip and field crossover before committing.','INTER',`L${lap}–${Math.min(lap+2,state.race.total_laps)}`);return;}
+  if(['INTERMEDIATE','WET'].includes(compound)){situation('Stay weather-aware','Track evolution and rival crossover laps now outweigh the nominal dry plan.',compound,weather?.rainfall?'CURRENT':'DRY CROSSOVER');return;}
+  if(isOut(state.driver)||remaining===0||remaining>100||!dry.includes(compound)){unavailable(isOut(state.driver)?'The selected car no longer has current lap data.':remaining===0?'Race complete.':'The dry model does not cover this race state.');return;}
   let mask=0;for(const s of history){const idx=dry.indexOf(s.compound);if(idx>=0)mask|=1<<idx;}
   const actions=nominalPlan(remaining,dry.indexOf(compound),age||0,mask,pitLoss),first=actions.findIndex(a=>a>=0);
-  txt('strategy-action',first===0?'Pit this lap':first>0?'Stay out':'Run to the flag');
-  txt('strategy-detail',first>=0?`Nominal stop on lap ${lap+first}. ${first===0?'Fit':'Then switch to'} ${dry[actions[first]].toLowerCase()} tyres.${flag.neutral?' Neutralised pit-loss assumption.':''}`:'The current compound can complete the remaining distance in this nominal model.');
+  const stopLap=first>=0?lap+first:null,next=first>=0?dry[actions[first]]:null,windowStart=stopLap==null?null:Math.max(lap,stopLap-1),windowEnd=stopLap==null?null:Math.min(state.race.total_laps-1,stopLap+2);
+  const call=flag.neutral&&first<=2?'Box under neutralisation':threat&&first<=2?`Cover ${threat.driver.name_acronym}`:opportunity&&first>0?'Extend for overcut':first===0?'Pit this lap':first>0?'Stay out':'Run to the flag';
+  txt('strategy-action',call);txt('pit-window',stopLap==null?'TO FLAG':`L${windowStart}–${windowEnd}`);
+  const confidence=forecast.observed>=3?'race-calibrated':forecast.observed?'blended':'historical-model';
+  txt('strategy-detail',first>=0?`Target lap ${stopLap} on ${next.toLowerCase()}. ${confidence} pit loss.${flag.neutral?' Safety Car/VSC reduces the modeled loss.':''}${threat?' Protect against the car behind.':''}${opportunity?' The car ahead has opened an overcut opportunity.':''}`:'No further stop is optimal in the nominal dry model.');
   txt('next-compound',first>=0?dry[actions[first]]:'—');
+  const nowPosition=rejoin?`P${rejoin.position}`:'—',plannedLoss=Math.max(0,pitLoss-(first>0?Math.min(2,first*.2):0)),planRejoin=rejoinAnalysis(plannedLoss,context),lateRejoin=rejoinAnalysis(pitLoss+Math.max(0,age-(compound==='SOFT'?22:compound==='MEDIUM'?32:42))*.15,context);
+  txt('scenario-now-value',nowPosition);txt('scenario-now-detail',threat?'Covers undercut threat':'Immediate track-position cost');
+  txt('scenario-plan-value',stopLap==null?'TO FLAG':`LAP ${stopLap}`);txt('scenario-plan-detail',stopLap==null?'No further stop planned':planRejoin?`Projected P${planRejoin.position} · ${next}`:`${next} · timing pending`);
+  txt('scenario-late-value',stopLap==null?'—':`LAP ${Math.min(stopLap+3,state.race.total_laps-1)}`);txt('scenario-late-detail',stopLap==null?'No extension scenario':lateRejoin?`Projected P${lateRejoin.position} · tyre offset risk`:'Build tyre offset · timing pending');
+  $('scenario-now').classList.toggle('warning',!!threat);$('scenario-plan').classList.toggle('warning',first<0);
   let c=compound,start=0;for(let i=0;i<=actions.length;i++){if(actions[i]>=0||i===actions.length){const el=document.createElement('span');el.style.width=`${(i-start+1)/Math.max(1,remaining)*100}%`;el.style.setProperty('--tyre',tyreColors[c]);el.title=c;$('plan-bar').append(el);if(i<actions.length)c=dry[actions[i]];start=i+1;}}
 }
 let bounds=null;

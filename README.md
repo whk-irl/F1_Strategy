@@ -34,8 +34,9 @@ samples around a recorded circuit trace, with smooth interpolation between sampl
   and selected-car views.
 - **Race panels:** classification and gaps, tyre compounds and stint history, speed,
   gear, throttle, brake, completed-lap sectors, weather, and race-control messages.
-- **Pit window:** measured-history pit-lane time, estimated race-time loss, projected
-  rejoin position from current gaps, and an undercut watch for nearby rivals.
+- **Strategy command:** compare boxing now, the model window, and extending the stint;
+  see measured pit loss, projected rejoin range, and named undercut/overcut rivals with
+  their tyre compound, age, gap, and recent-stop state.
 - **Playback:** pause, seek, restart, and replay at 1×–60×. Timing follows the replay cursor.
 - **Strategy Lab:** compare the baked model experiments and read the latest published
   pretraining and fine-tuning results.
