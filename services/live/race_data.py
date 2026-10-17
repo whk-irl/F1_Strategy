@@ -332,7 +332,9 @@ def build_bundle(
         ),
         "stints": records["stints"],
         "pits": _timed(
-            records["pit"], origin, ["driver_number", "lap_number", "pit_duration", "lane_duration"]
+            records["pit"],
+            origin,
+            ["driver_number", "lap_number", "pit_duration", "lane_duration", "stop_duration"],
         ),
         "weather": _timed(
             records["weather"],
@@ -352,7 +354,7 @@ def build_bundle(
 def load_replay(feed: RaceFeed, meta: dict[str, Any]) -> dict[str, Any]:
     """Fetch a race once; bounded GPS requests keep responses below provider limits."""
     key = int(meta["session_key"])
-    bundle_path = CACHE / f"race-{key}-v2.json"
+    bundle_path = CACHE / f"race-{key}-v3.json"
     if bundle_path.exists():
         return cast(dict[str, Any], json.loads(bundle_path.read_text(encoding="utf-8")))
     endpoints = (

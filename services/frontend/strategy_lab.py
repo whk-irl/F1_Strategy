@@ -1309,18 +1309,18 @@ def main() -> None:
     # ═════════════════════════════════════════════════════════════════════════
     with tab_training:
         root = Path(__file__).resolve().parents[2]
-        run_dir = Path(os.getenv("PITWALL_TRAINING_RUN", "runs/retrain-20261015"))
+        run_dir = Path(os.getenv("PITWALL_TRAINING_RUN", "runs/retrain-pit-time-final-20261016"))
         if not run_dir.is_absolute():
             run_dir = root / run_dir
         report = run_dir / "report.md"
         chart = run_dir / "training_summary.png"
         published = not report.exists()
         if published:
-            report = root / "docs" / "model-cards" / "2026-10-15-retraining.md"
-            chart = root / "docs" / "assets" / "training-summary.png"
+            report = root / "docs" / "model-cards" / "2026-10-16-pit-time-retraining.md"
+            chart = root / "docs" / "assets" / "pit-time-training-summary.png"
         if report.exists():
             st.caption(
-                "BC → history-aware PPO → recent-event fine-tuning. "
+                "Measured pit-time model → BC → history-aware PPO → recent-event fine-tuning. "
                 "This candidate has not been promoted; the DP benchmark remains stronger."
             )
             if chart.exists():

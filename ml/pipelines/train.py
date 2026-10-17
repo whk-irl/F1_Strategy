@@ -22,6 +22,7 @@ import torch
 from scipy.stats import spearmanr
 from services.ingestion.acquire import file_sha256, write_json
 from services.simulator.env import F1RaceEnv
+from services.simulator.pit_time import DEFAULT_MODEL, load_pit_time_model
 from services.simulator.validator import validate_simulator
 from sklearn.metrics import average_precision_score, mean_absolute_error
 
@@ -101,6 +102,12 @@ def run(config: TrainingConfig, *, resume: bool = False, through: str = "policy"
     np.random.seed(config.seed)
     torch.manual_seed(config.seed)
     df, provenance = load_dataset(config)
+    if not DEFAULT_MODEL.exists():
+        raise FileNotFoundError(
+            "Measured pit-time model missing; run `uv run python -m ml.pipelines.pit_time` first"
+        )
+    pit_model_sha256 = file_sha256(DEFAULT_MODEL)
+    pit_model = load_pit_time_model()
     splits = split_events(df, config)
     fingerprint = hashlib.sha256(
         json.dumps(
@@ -108,6 +115,7 @@ def run(config: TrainingConfig, *, resume: bool = False, through: str = "policy"
                 "config": config.model_dump(mode="json"),
                 "provenance": provenance,
                 "code": code_fingerprint(),
+                "pit_time_model_sha256": pit_model_sha256,
             },
             sort_keys=True,
         ).encode()
@@ -128,6 +136,10 @@ def run(config: TrainingConfig, *, resume: bool = False, through: str = "policy"
     }
     write_json(config.output_dir / "config.json", config.model_dump(mode="json"))
     write_json(config.output_dir / "dataset.json", provenance)
+    write_json(
+        config.output_dir / "pit_time_source.json",
+        {"path": str(DEFAULT_MODEL.resolve()), "sha256": pit_model_sha256, "model": pit_model},
+    )
     write_json(config.output_dir / "splits.json", split_manifest(splits))
     versions = {
         name: importlib.metadata.version(name)
@@ -253,12 +265,20 @@ def run(config: TrainingConfig, *, resume: bool = False, through: str = "policy"
             ),
             "sc_prevalence": float(sc_test["is_sc_next_3_laps"].mean()),
         },
+        "pit_time_model": {
+            "sha256": pit_model_sha256,
+            "train_scope": pit_model["train_scope"],
+            "global_measured_lane_s": pit_model["global"]["lane_s"],
+            "global_estimated_net_loss_s": pit_model["global"]["net_loss_s"],
+        },
         "limitations": [
             "Retrospective recorded-field simulator, not a causal forecast of opponents",
             "Legacy timestamps approximate; feature values rebuilt causally",
             "Policy limited to dry races without red flags; no tire inventory model",
             "One training seed; paired episodes are not independent training runs",
             "Research candidate; historical success does not establish real-race superiority",
+            "Pit race-loss labels are observational adjacent-lap estimates; "
+            "disrupted stops are excluded",
         ],
     }
     fine = result["test"]["finetuned"]
@@ -278,11 +298,12 @@ def run(config: TrainingConfig, *, resume: bool = False, through: str = "policy"
             "algorithm": "bc_ppo_history",
             "frames": config.history_frames,
             "features_per_frame": 24,
-            "feature_version": "causal-v2",
+            "feature_version": "causal-v3",
             "config": "config.json",
             "policy": "policy/finetuned.zip",
             "tire_model": "tire/finetune/model.txt",
             "sc_model": "sc/finetune/model.txt",
+            "pit_time_model": "pit_time_source.json",
             "report": "report.json",
             "promoted": False,
             "sha256": {
@@ -314,6 +335,7 @@ def run(config: TrainingConfig, *, resume: bool = False, through: str = "policy"
             for name in (
                 "config.json",
                 "dataset.json",
+                "pit_time_source.json",
                 "splits.json",
                 "report.md",
                 "report.json",

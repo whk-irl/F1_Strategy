@@ -8,7 +8,7 @@ and an end-to-end machine-learning pipeline.
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](pyproject.toml)
 
 **[Open the live demo](https://f1strategy-forza.streamlit.app/)** ·
-[Training results](docs/model-cards/2026-10-15-retraining.md) ·
+[Training results](docs/model-cards/2026-10-16-pit-time-retraining.md) ·
 [Race Center guide](docs/guides/race-center.md)
 
 ![Race Center: circuit positions, classification, telemetry and strategy panels](docs/assets/race-center.png)
@@ -22,6 +22,8 @@ samples around a recorded circuit trace, with smooth interpolation between sampl
   and selected-car views.
 - **Race panels:** classification and gaps, tyre compounds and stint history, speed,
   gear, throttle, brake, completed-lap sectors, weather, and race-control messages.
+- **Pit window:** measured-history pit-lane time, estimated race-time loss, projected
+  rejoin position from current gaps, and an undercut watch for nearby rivals.
 - **Playback:** pause, seek, restart, and replay at 1×–60×. Timing follows the replay cursor.
 - **Strategy Lab:** compare the baked model experiments and read the latest published
   pretraining and fine-tuning results.
@@ -37,23 +39,25 @@ the public replay needs neither. See [connection setup](docs/guides/race-center.
 
 ## Latest training result
 
-The October 2026 run used **120,935 lap records across 109 events**, including 17
-completed 2026 races acquired through the OpenF1 fallback. The lifecycle covers
+The October 16 run used **120,935 lap records across 109 events**, including 17
+completed 2026 races acquired through OpenF1. A separate pit-time model fitted
+1,815 routine measured stops from earlier races. The policy lifecycle covers
 supporting-model pretraining and adaptation, simulator validation, behavioral cloning,
 four-frame PPO pretraining, and recent-event fine-tuning.
 
 | Held-out policy | Mean position | Mean race time (s) | Mean pit stops |
 |---|---:|---:|---:|
-| Source PPO | 8.575 | 5986.80 | 1.70 |
-| Fine-tuned PPO | 8.575 | 5985.04 | 1.60 |
-| Dynamic-programming benchmark | **8.425** | **5973.64** | 1.00 |
+| Source PPO | 8.575 | 5983.33 | 1.60 |
+| Fine-tuned PPO | 8.550 | 5986.12 | 1.82 |
+| Dynamic-programming benchmark | **8.400** | **5972.31** | 1.00 |
 
-**The new PPO candidate is not promoted.** Fine-tuning improved mean race time over
-source PPO, but dynamic programming remained stronger. Evaluation used 40 paired
-episodes across three eligible held-out events and one training seed. Both simulator
-gates passed the required Spearman rho ≥ 0.7 (0.827 and 0.817).
+**The new PPO candidate is not promoted.** It trailed dynamic programming by
+13.73 seconds on the held-out event-weighted comparison. Evaluation used 40 paired
+episodes across three eligible events and one training seed. Both simulator gates
+passed the required Spearman rho ≥ 0.7 (0.828 and 0.821). The independent measured
+pit-time model is available to Race Center regardless of policy promotion.
 
-Read the [model card](docs/model-cards/2026-10-15-retraining.md) for splits, uncertainty,
+Read the [model card](docs/model-cards/2026-10-16-pit-time-retraining.md) for splits, uncertainty,
 supporting-model metrics and limitations, and the [algorithm decision](docs/decisions/0005-staged-policy-training.md)
 for the research behind the method. The race-center strategy desk is a labelled
 nominal dry-race DP reference, separate from the calibrated evaluation benchmark.
@@ -82,14 +86,18 @@ Keep credentials in environment variables or the hosting provider's secret store
 
 ```bash
 uv run python -m services.ingestion.acquire --years 2026 --provider auto
-uv run python -m ml.pipelines.train --config configs/training.local.json
+uv run python scripts/acquire_pit_history.py --years 2023,2024,2025,2026
+uv run python -m ml.pipelines.pit_time
+uv run python -m ml.pipelines.train --config configs/training.pit-time.json
 ```
 
 ```mermaid
 flowchart LR
     A[FastF1 / OpenF1] --> B[Bronze → Silver → Gold]
+    A --> P[Measured pit timing → venue forecast]
     B --> C[World-model pretraining and adaptation]
     C --> D[Simulator fidelity gates]
+    P --> D
     D --> E[Behavioral pretraining]
     E --> F[History-aware PPO]
     F --> G[Recent-event fine-tuning]
@@ -105,7 +113,7 @@ The local profile budgets 200,000 PPO source steps and 100,000 fine-tuning steps
 It writes checkpoints, normalization statistics, split membership, metrics and
 provenance under `runs/`. Use `--resume` to verify completed stages of an unchanged
 run. Choose a new `output_dir` after changing source, data or configuration; the
-saved October 15 run predates the subsequent UI changes.
+saved October 16 run is tied to the source fingerprint in its report.
 
 See the [training guide](docs/guides/staged-training.md) for configuration, artifacts
 and inference. The 96-input staged candidate has a dedicated loader and does not
@@ -120,7 +128,7 @@ uv run mypy services/ ml/
 uv run pytest
 ```
 
-The October 16 update passed **166 tests with 89.08% configured coverage**, plus Ruff
+The October 16 update passed **167 tests with 89.14% configured coverage**, plus Ruff
 and mypy checks. Replay controls and desktop/mobile layouts were checked in the
 browser. Authenticated active-session timing still requires verification during a race.
 
