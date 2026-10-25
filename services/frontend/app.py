@@ -12,7 +12,7 @@ from dotenv import load_dotenv
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 load_dotenv()
 
-_RELEASE = "2026-10-16-measured-pit-time"
+_RELEASE = "2026-10-24-usgp-live-test"
 
 
 def _refresh_release_modules() -> None:
@@ -21,6 +21,8 @@ def _refresh_release_modules() -> None:
         return
     for name in (
         "services.live.race_data",
+        "services.live.weekend",
+        "services.live.free_timing",
         "services.simulator.circuits",
         "services.simulator.pit_time",
         "services.frontend.race_center",

@@ -19,6 +19,7 @@ from typing import Any, Literal
 import fastf1
 import numpy as np
 import pandas as pd
+from fastf1.exceptions import DataNotLoadedError
 from pydantic import BaseModel, Field
 
 from services.ingestion.schemas.bronze import BronzeLapSchema
@@ -106,6 +107,21 @@ def join_weather(laps: pd.DataFrame, weather: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
+def session_origin(session: Any) -> pd.Timestamp:
+    """Return a UTC race origin even when FastF1 did not load telemetry timing.
+
+    Older FastF1 sessions do not expose ``t0_date`` after a laps-only load.  The
+    published race start in the event schedule is the correct causal fallback
+    and keeps historical acquisition independent of telemetry downloads.
+    """
+    try:
+        value = session.t0_date
+    except (AttributeError, DataNotLoadedError):
+        value = session.event["Session5DateUtc"]
+    origin = pd.Timestamp(value)
+    return origin.tz_localize("UTC") if origin.tzinfo is None else origin.tz_convert("UTC")
+
+
 def acquire_session(year: int, round_number: int, root: Path) -> dict[str, Any]:
     """Load laps, weather and metadata once, then validate and publish all layers."""
     session = fastf1.get_session(year, round_number, "R")
@@ -116,7 +132,7 @@ def acquire_session(year: int, round_number: int, root: Path) -> dict[str, Any]:
     if raw.duplicated(["DriverNumber", "LapNumber"]).any():
         raise ValueError("Duplicate driver/lap keys in source")
     total_laps = int(session.total_laps or raw["LapNumber"].max())
-    origin = pd.Timestamp(session.t0_date)
+    origin = session_origin(session)
     raw = join_weather(raw, pd.DataFrame(session.weather_data))
     raw["IsAccurate"] = raw["IsAccurate"].fillna(False).astype(bool)
     BronzeLapSchema.validate(raw)

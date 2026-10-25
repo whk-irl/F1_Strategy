@@ -1,0 +1,19 @@
+{
+  "year": 2026,
+  "round_number": 18,
+  "meeting_key": 1297,
+  "race_session_key": 11396,
+  "country_name": "United States",
+  "circuit_short_name": "Austin",
+  "circuit_reference_round": 19,
+  "scheduled_laps": 56,
+  "race_start_utc": "2026-10-25T20:00:00Z",
+  "output_dir": "data/weekends/2026-united-states",
+  "snapshot_path": "configs/weekends/us-2026.snapshot.json",
+  "sources": [
+    "https://www.formula1.com/en/racing/2026/united-states",
+    "https://www.formula1.com/en/results/2026/races/1297/united-states/qualifying",
+    "https://api.openf1.org/v1/sessions?meeting_key=1297",
+    "https://api.openf1.org/v1/starting_grid?meeting_key=1297"
+  ]
+}

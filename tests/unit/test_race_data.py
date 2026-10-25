@@ -212,7 +212,8 @@ def test_replay_caches_bundle_and_telemetry_uses_race_bounds(tmp_path, monkeypat
     assert data.load_telemetry(feed, 1, 1, bundle["origin"], 180) == []
 
 
-def test_live_window_freshness_and_track_reuse(monkeypatch, race_records):
+def test_live_window_freshness_and_track_reuse(monkeypatch, race_records, tmp_path):
+    monkeypatch.setattr(data, "LIVE_CAPTURE", tmp_path)
     meta, records, _locations, _ = race_records
     now = pd.Timestamp(datetime.now(UTC))
     feed = data.RaceFeed()
@@ -268,3 +269,221 @@ def test_authentication_failure_is_sanitised(monkeypatch):
     with pytest.raises(data.RaceFeedError, match="Live authentication failed") as error:
         feed.get("sessions", {"session_key": "latest"})
     assert "secret-test-password" not in str(error.value)
+
+
+@pytest.fixture
+def prepared_weekend(race_records):
+    meta, _, _, _ = race_records
+    meta.update({"meeting_key": 77, "session_name": "Race", "year": 2024})
+    return {
+        "year": 2024,
+        "meeting_key": 77,
+        "scheduled_laps": 56,
+        "race_session": dict(meta),
+        "sessions": [],
+    }
+
+
+def test_confirmed_distance_is_never_borrowed_from_another_session(prepared_weekend):
+    meta = prepared_weekend["race_session"]
+    assert data.confirmed_race_distance(meta, prepared_weekend) == 56
+    assert data.confirmed_race_distance({**meta, "session_key": 2}, prepared_weekend) is None
+    assert data.confirmed_race_distance({**meta, "meeting_key": 78}, prepared_weekend) is None
+    assert (
+        data.confirmed_race_distance({**meta, "session_name": "Sprint"}, prepared_weekend) is None
+    )
+    assert data.confirmed_race_distance(meta, None) is None
+    assert data.confirmed_race_distance(meta, {**prepared_weekend, "scheduled_laps": 56.5}) is None
+
+
+def test_pinned_race_survives_scheduled_end_and_exposes_prestart(prepared_weekend):
+    feed = MagicMock()
+    planned = prepared_weekend["race_session"]
+    for time_value in ("2024-09-01T12:00:00Z", "2024-09-01T16:30:00Z"):
+        assert (
+            data.select_live_session(feed, prepared_weekend, now=pd.Timestamp(time_value))
+            == planned
+        )
+    feed.get.assert_not_called()
+    feed.get.return_value = []
+    assert (
+        data.select_live_session(feed, prepared_weekend, now=pd.Timestamp("2024-09-02T12:00:00Z"))
+        is None
+    )
+    feed.get.assert_called_once()
+
+
+def test_bootstrap_track_uses_only_matching_completed_weekend(prepared_weekend):
+    meta = prepared_weekend["race_session"]
+    track = [[i, i + 10] for i in range(60)]
+    feed = MagicMock()
+    weekend = {**prepared_weekend, "track": track}
+    assert data.load_bootstrap_track(feed, meta, weekend) == track
+    assert data.load_bootstrap_track(feed, {**meta, "meeting_key": 2}, weekend) == []
+    feed.get.assert_not_called()
+
+
+def test_live_uses_verified_distance_from_first_lap(
+    prepared_weekend, race_records, monkeypatch, tmp_path
+):
+    monkeypatch.setattr(data, "LIVE_CAPTURE", tmp_path)
+    meta, records, locations, _ = race_records
+    feed = data.RaceFeed()
+
+    def get(endpoint, *args, **kwargs):
+        return (
+            locations
+            if endpoint == "location"
+            else []
+            if endpoint == "car_data"
+            else records[endpoint]
+        )
+
+    monkeypatch.setattr(feed, "get", get)
+    feed.live_tracks[1] = [[1, 2], [3, 4]]
+    bundle, _, _ = data.load_live(feed, meta, 1, prepared_weekend)
+    assert bundle["observed_laps"] == 2
+    assert bundle["total_laps"] == 56
+    assert bundle["distance_confirmed"] is True
+    assert bundle["capture_ok"] is True
+    stored = json.loads((tmp_path / "1" / "snapshots.jsonl").read_text())
+    assert stored["total_laps"] == 56
+    assert len(stored["laps"]["1"]) <= 2
+
+
+def test_live_waits_for_first_lap_without_failing_connection(race_records, monkeypatch):
+    meta, records, _, _ = race_records
+    records["laps"] = []
+    feed = data.RaceFeed()
+    monkeypatch.setattr(feed, "get", lambda endpoint, *args, **kwargs: records[endpoint])
+    with pytest.raises(data.RaceFeedPendingError, match="lights out"):
+        data.load_live(feed, meta, 1)
+
+
+def test_free_timing_keeps_missing_gps_unknown_and_gates_freshness(
+    prepared_weekend, monkeypatch, tmp_path
+):
+    monkeypatch.setattr(data, "LIVE_CAPTURE", tmp_path)
+    meta = prepared_weekend["race_session"]
+    now = pd.Timestamp.now(tz="UTC")
+    snapshot = {
+        "observed_at": (now - pd.Timedelta(seconds=3)).isoformat(),
+        "current_lap": 12,
+        "track_status": "1",
+        "drivers": [
+            {
+                "driver_number": 1,
+                "name_acronym": "AAA",
+                "position": 2,
+                "completed_laps": 11,
+                "last_lap_duration": 91.2,
+                "gap_to_leader": None,
+                "interval": None,
+                "compound": "MEDIUM",
+                "tyre_age": 8,
+                "pit_count": 1,
+                "observed_at": (now - pd.Timedelta(seconds=3)).isoformat(),
+                "gap_to_leader_updated_at": (now - pd.Timedelta(seconds=3)).isoformat(),
+                "interval_updated_at": (now - pd.Timedelta(seconds=3)).isoformat(),
+                "last_lap_updated_at": (now - pd.Timedelta(seconds=4)).isoformat(),
+            }
+        ],
+        "stints": [
+            {"driver_number": 1, "stint_number": 1, "lap_start": 1, "compound": "SOFT"},
+            {"driver_number": 1, "stint_number": 2, "lap_start": None, "compound": "MEDIUM"},
+        ],
+        "weather": {"rainfall": 0},
+        "race_control": [],
+    }
+    feed = data.RaceFeed()
+    weekend = {**prepared_weekend, "track": [[i, i] for i in range(60)]}
+    bundle, telemetry, age = data.load_free_live(feed, snapshot, meta, 1, weekend)
+    assert telemetry == []
+    assert bundle["locations"] == {}
+    assert bundle["capabilities"]["position"] is False
+    assert bundle["track"] == weekend["track"]
+    assert bundle["total_laps"] == 56
+    assert bundle["laps"]["1"][-1][2] == 12
+    assert bundle["latest_completed"]["1"][3] == 91.2
+    assert bundle["intervals"]["1"][-1][1:] == [None, None]
+    assert {row["compound"] for row in bundle["stints"]} == {"SOFT", "MEDIUM"}
+    assert age is not None
+    assert 3 <= age < 6
+    first_gap_t = bundle["intervals"]["1"][-1][0]
+    fresh_other_driver = {**snapshot, "observed_at": now.isoformat()}
+    refreshed, _, _ = data.load_free_live(feed, fresh_other_driver, meta, 1, weekend)
+    assert refreshed["intervals"]["1"][-1][0] == first_gap_t
+    stale = {**snapshot, "observed_at": (now - pd.Timedelta(seconds=90)).isoformat()}
+    _, _, stale_age = data.load_free_live(feed, stale, meta, 1, weekend)
+    assert stale_age is not None
+    assert stale_age >= 90
+
+
+def test_live_capture_can_be_disabled_or_fail_without_stopping_timing(
+    prepared_weekend, monkeypatch, tmp_path
+):
+    feed = data.RaceFeed()
+    bundle = {
+        "id": 1,
+        "meta": prepared_weekend["race_session"],
+        "updated_at": datetime.now(UTC).isoformat(),
+        "source": "test timing",
+        "origin": prepared_weekend["race_session"]["date_start"],
+        "duration": 1,
+        "total_laps": 56,
+        "drivers": [],
+        "laps": {},
+        "positions": {},
+        "intervals": {},
+        "locations": {},
+        "stints": [],
+        "pits": [],
+        "weather": [],
+        "messages": [],
+    }
+    monkeypatch.setenv("PITWALL_LIVE_CAPTURE", "0")
+    data.capture_live_snapshot(feed, bundle, [], 1)
+    assert bundle["capture_ok"] is None
+    monkeypatch.setenv("PITWALL_LIVE_CAPTURE", "1")
+    invalid = tmp_path / "not-a-directory"
+    invalid.write_text("occupied")
+    monkeypatch.setattr(data, "LIVE_CAPTURE", invalid)
+    data.capture_live_snapshot(feed, bundle, [], 1)
+    assert bundle["capture_ok"] is False
+
+
+def test_prospective_decision_log_is_structured_and_session_bound(
+    prepared_weekend, monkeypatch, tmp_path
+):
+    monkeypatch.setattr(data, "LIVE_CAPTURE", tmp_path)
+    feed = data.RaceFeed()
+    decision = {
+        "session_key": 1,
+        "driver": 1,
+        "lap": 12,
+        "t": 1020,
+        "input_updated_at": datetime.now(UTC).isoformat(),
+        "action": "stay_out",
+        "source": "free",
+        "fit": "HARD",
+        "stop_lap": 25,
+        "pit_loss_s": 20,
+        "rejoin_position": 7,
+        "sample_age_s": 2,
+        "arbitrary_browser_text": "never-persist-this",
+    }
+    assert data.record_live_decision(feed, decision, prepared_weekend)
+    text = (tmp_path / "1" / "recommendations.jsonl").read_text()
+    record = json.loads(text)
+    assert record["stop_lap"] == 25
+    assert record["action"] == "stay_out"
+    assert "never-persist-this" not in text
+    for invalid in (
+        {**decision, "session_key": 999},
+        {**decision, "lap": 57},
+        {**decision, "action": ["stay_out"]},
+        {**decision, "fit": []},
+        {**decision, "input_updated_at": "NaT"},
+    ):
+        assert not data.record_live_decision(feed, invalid, prepared_weekend)
+    assert len((tmp_path / "1" / "recommendations.jsonl").read_text().splitlines()) == 1
