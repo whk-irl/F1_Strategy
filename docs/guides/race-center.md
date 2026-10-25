@@ -35,6 +35,15 @@ The browser animates locally; it does not call the provider for every frame.
 
 ## Live sessions
 
+For the local free timing route, run `python -m services.live.free_timing` alongside
+Streamlit and set `PITWALL_LIVE_PROVIDER=free`. The US GP launcher handles both.
+It reads the public SignalR timing topics through the open-source FastF1 client and
+a local incremental adapter. Timing, gaps, tyres, weather and race control depend
+on what the provider publishes. This route requests no GPS or car telemetry; the
+map retains its recorded circuit trace and shows no fabricated moving positions.
+A connection and initial session snapshot do not prove fresh live delivery. See
+the [test guide](live-race-test.md) for readiness checks and capture locations.
+
 [OpenF1](https://openf1.org/docs/) offers historical data for free from 2023 and
 requires a subscription for real-time data. Configure its access token as the
 `OPENF1_TOKEN` environment variable on the **server**, then restart Streamlit.
@@ -52,10 +61,11 @@ it displays a waiting screen and a return-to-replay button. With access configur
 live timing refreshes every 15 seconds, with a 20-second playback buffer so cars can
 move smoothly between polls. The interface shows current delay and marks stale data.
 This is a delayed timing display with network/provider latency.
-Live sessions are not saved as immutable completed replays. A recent recorded lap
-is needed before a circuit trace can be drawn. The authenticated feed must be
-verified during an active session; the local verification used recorded data and
-mocked live-feed contracts, with no active-session subscription available.
+Live sessions are not saved as immutable completed replays. Bounded input snapshots
+are appended to ignored `data/live/<session_key>/snapshots.jsonl` for the shadow test.
+Structured prospective calls are saved alongside them in `recommendations.jsonl`.
+Prepared practice/qualifying GPS supplies the circuit trace before the first race
+lap. Real-time freshness must be verified during the race.
 
 ## Strategy panel
 
@@ -85,8 +95,11 @@ following lap. The degradation parameters are illustrative and independent of th
 calibrated simulator's evaluation DP. The desk ignores tyre inventory and future weather,
 and holds the call during red flags. Rain and wet-compound states switch the panel to
 a weather crossover call rather than applying the dry optimization.
-Live timing also suspends the nominal plan because the feed does not confirm the
-scheduled race distance; it does not treat the last observed lap as the final lap.
+The prepared US GP summary confirms 56 scheduled laps for its exact meeting/session
+identity. Live strategy requires that confirmed distance and fresh timing; other
+events with unconfirmed distance remain unavailable. The last observed lap is never
+treated as the scheduled final lap. Practice calibration is shrunk toward circuit
+priors because fuel load and traffic confound observed degradation.
 
 The [retraining model card](../model-cards/2026-10-16-pit-time-retraining.md) records the actual
 BC → PPO → fine-tuning result and why the new checkpoint was not promoted.

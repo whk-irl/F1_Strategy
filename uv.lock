@@ -3094,7 +3094,7 @@ requires-dist = [
     { name = "boto3", specifier = ">=1.34" },
     { name = "boto3-stubs", extras = ["s3"], marker = "extra == 'dev'", specifier = ">=1.34" },
     { name = "fastapi", specifier = ">=0.110" },
-    { name = "fastf1", specifier = ">=3.3" },
+    { name = "fastf1", specifier = ">=3.8.3" },
     { name = "feast", extras = ["aws"], specifier = ">=0.38" },
     { name = "fsspec", specifier = ">=2024.2" },
     { name = "gymnasium", specifier = ">=0.29" },

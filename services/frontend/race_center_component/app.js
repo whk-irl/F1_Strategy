@@ -10,6 +10,7 @@ function height(){post('streamlit:setFrameHeight',{height:Math.ceil(document.doc
 function send(action,value){save();post('streamlit:setComponentValue',{value:{action,value,nonce:Date.now()+Math.random()},dataType:'json'});}
 function txt(id,value){const el=$(id); const next=String(value); if(el.textContent!==next)el.textContent=next;}
 function fixed(n,d=1){return n==null||!Number.isFinite(Number(n))?'—':Number(n).toFixed(d);}
+function numericGap(value){if(value==null||(typeof value==='string'&&!value.trim())||typeof value==='boolean')return null;const n=Number(value);return Number.isFinite(n)?n:null;}
 function clock(t,full=false){t=Math.max(0,Math.floor(t));let s=String(t%60).padStart(2,'0'),m=String(Math.floor(t/60)%60).padStart(2,'0');return full?`${String(Math.floor(t/3600)).padStart(2,'0')}:${m}:${s}`:`${Math.floor(t/60)}:${s}`;}
 function lapTime(t){return t==null?'—':`${Math.floor(t/60)}:${(t%60).toFixed(3).padStart(6,'0')}`;}
 function gap(v,leader=false){return leader?'LEADER':v==null?'—':typeof v==='number'?`+${v.toFixed(3)}`:String(v);}
@@ -25,7 +26,7 @@ function render(payload){
   $('season').disabled=payload.mode==='live';$('session').disabled=payload.mode==='live';
   $('notice').hidden=!payload.notice;$('race-content').hidden=!!payload.notice||!payload.race;
   txt('feed-label',payload.mode==='live'?'LIVE CONNECTION':'RECORDED TELEMETRY');
-  if(payload.notice){state.race=null;txt('notice-title',payload.notice.title);txt('notice-detail',payload.notice.detail);txt('event-title','Live race center');txt('event-subtitle','Connected to the paddock. Ready when the lights go out.');txt('round-title',`OPENF1 / ${payload.year}`);height();return;}
+  if(payload.notice){state.race=null;txt('notice-title',payload.notice.title);txt('notice-detail',payload.notice.detail);txt('event-title',payload.weekend?'United States Grand Prix':'Live race center');txt('event-subtitle',payload.weekend?'Austin / Weekend preparation and local race test':'Ready when the lights go out.');txt('round-title',`RACE PREPARATION / ${payload.year}`);height();return;}
   const race=payload.race;if(!race)return;
   if(state.race?.id!==race.id){
     state.t=0;state.planKey=null;state.playing=!matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -33,23 +34,28 @@ function render(payload){
   }
   state.race=race;state.driver=payload.driver;
   if(!race.drivers.some(d=>d.driver_number===state.driver))state.driver=race.drivers[0]?.driver_number;
-  if(payload.mode==='live'){state.t=Math.max(0,race.duration-20);state.playing=false;state.snapshotAt=performance.now();}
+  if(payload.mode==='live'){state.t=Math.max(0,race.duration-(race.capabilities?.position===false?0:20));state.playing=false;state.snapshotAt=performance.now();}
   state.t=Math.max(0,Math.min(state.t,race.duration));
   const m=race.meta;
   const eventNames={Monza:'Italian',Melbourne:'Australian',Shanghai:'Chinese',Suzuka:'Japanese',Montreal:'Canadian','Monte Carlo':'Monaco',Catalunya:'Spanish',Spielberg:'Austrian',Silverstone:'British','Spa-Francorchamps':'Belgian',Hungaroring:'Hungarian',Zandvoort:'Dutch',Baku:'Azerbaijan',Singapore:'Singapore'};
   txt('event-title',`${eventNames[m.circuit_short_name]||m.location} Grand Prix`);txt('event-subtitle',`${m.location}  /  ${new Date(m.date_start).toLocaleDateString('en-GB',{day:'2-digit',month:'long',year:'numeric',timeZone:'UTC'})}  /  ${m.session_name}`);
-  txt('round-title',`FORMULA 1 / ${m.year} SEASON`);txt('total-laps',payload.mode==='live'?'/ —':`/ ${race.total_laps}`);txt('map-name',m.circuit_short_name.toUpperCase());txt('map-location',m.circuit_short_name.toUpperCase());
-  txt('map-source',payload.mode==='live'?'DELAYED GPS · 15s REFRESH':'RECORDED GPS · INTERPOLATED');
-  txt('playback-label',payload.mode==='live'?'LIVE TIMING · DELAYED':'RACE REPLAY');
+  txt('round-title',`FORMULA 1 / ${m.year} SEASON`);txt('total-laps',payload.mode==='live'&&!race.distance_confirmed?'/ —':`/ ${race.total_laps}`);txt('map-name',m.circuit_short_name.toUpperCase());txt('map-location',m.circuit_short_name.toUpperCase());
+  txt('map-source',payload.mode==='live'?(race.capabilities?.position===false?'STATIC CIRCUIT · LIVE GPS UNAVAILABLE':'DELAYED GPS · 15s REFRESH'):'RECORDED GPS · INTERPOLATED');
+  $('track-canvas').setAttribute('aria-label',race.capabilities?.position===false?'Static circuit map; live car positions unavailable':'Circuit map with recorded car positions');
+  document.querySelector('.strategy-badge').textContent=payload.mode==='live'?'SHADOW TEST':'RACE MODEL';
+  document.querySelector('.strategy-footnote').textContent=race.capabilities?.position===false?`Experimental local shadow test. Historical measured pit loss and practice-informed tyres guide the nominal plan. Live GPS, car telemetry and measured pit-lane times are unavailable. Rejoin uses current gaps; future rival traffic is unknown.${race.capture_ok===false?' Local capture failed; check server storage.':''}`:'Recommendation combines measured pit loss, tyre age, race state, nearby gaps, rival tyres and recent stops. Rejoin outcomes are ranges, not guarantees. The dry-race dynamic program is a research reference.';
+  document.querySelector('footer span:nth-child(2)').textContent=race.capabilities?.position===false?'Data: public F1 timing via FastF1 · Experimental local test · Unofficial':'Data: OpenF1 · Independent research project · Unofficial';
+  txt('timeline-note',race.capabilities?.position===false?'Timing samples · no live GPS':'Actual positions · smooth playback');
+  txt('playback-label',payload.mode==='live'?(race.capabilities?.position===false?'LIVE TIMING · EXPERIMENTAL':'LIVE TIMING · DELAYED'):'RACE REPLAY');
   for(const id of ['play','restart','seek','playback-speed'])$(id).disabled=payload.mode==='live';
   $('playback-speed').value=state.speed;$('labels').classList.toggle('active',state.labels);$('labels').setAttribute('aria-pressed',String(state.labels));$('focus').classList.toggle('active',state.follow);$('focus').setAttribute('aria-pressed',String(state.follow));
   buildTower();fitTrack();updatePanels();height();
 }
 function driverInfo(number){return state.race.drivers.find(d=>d.driver_number===number)||{driver_number:number,name_acronym:String(number),full_name:'Unknown driver',team_colour:'73839b',team_name:'—'};}
 function currentLap(number){return latest(state.race.laps[number],state.t);}
-function completedLap(number){const rows=state.race.laps[number]||[];for(let i=rows.length-1;i>=0;i--)if(rows[i][1]!=null&&rows[i][1]<=state.t)return rows[i];return null;}
-function currentStint(number,lap){return state.race.stints.filter(s=>s.driver_number===number&&s.lap_start<=lap).sort((a,b)=>a.stint_number-b.stint_number).at(-1);}
-function isOut(number){const laps=state.race.laps[number]||[];const last=laps.at(-1);return last&&last[2]<state.race.total_laps-2&&state.t>(last[1]??last[0]+120)+180&&state.trackFlag!=='RED FLAG';}
+function completedLap(number){const observed=state.race.latest_completed?.[number];if(observed&&observed[1]<=state.t)return observed;const rows=state.race.laps[number]||[];for(let i=rows.length-1;i>=0;i--)if(rows[i][1]!=null&&rows[i][1]<=state.t)return rows[i];return null;}
+function currentStint(number,lap){return state.race.stints.filter(s=>s.driver_number===number&&s.lap_start<=lap).sort((a,b)=>Number(!!a.current_sample)-Number(!!b.current_sample)||a.stint_number-b.stint_number).at(-1);}
+function isOut(number){if(state.payload.mode==='live'&&!state.race.distance_confirmed)return false;const laps=state.race.laps[number]||[];const last=laps.at(-1);return last&&last[2]<state.race.total_laps-2&&state.t>(last[1]??last[0]+120)+180&&state.trackFlag!=='RED FLAG';}
 function buildTower(){
   const tower=$('timing-tower');tower.replaceChildren();state.rows.clear();
   for(const d of state.race.drivers){
@@ -76,6 +82,7 @@ function flagState(){
     if(m.flag==='CHEQUERED'){flag='CHEQUERED FLAG';style='';}
   }
   if(flag==='TRACK CLEAR'&&yellow.size){flag='YELLOW FLAG';style='yellow';}
+  if(state.race.track_status&&(!messages.length||(state.race.track_status_t??-1)>=messages.at(-1).t)){const status=String(state.race.track_status);if(status==='4'){flag='SAFETY CAR';style='yellow';neutral=true;}else if(['6','7'].includes(status)){flag='VIRTUAL SAFETY CAR';style='yellow';neutral=true;}else if(status==='5'){flag='RED FLAG';style='red';neutral=true;}else if(status==='1'){flag='TRACK CLEAR';style='';neutral=false;}}
   return {flag,style,neutral};
 }
 function updatePanels(){
@@ -91,34 +98,35 @@ function updatePanels(){
     const g=row.querySelector('.timing-gap'),v=int&&state.t-int[0]<45?int[1]:null;g.textContent=isOut(n)?'NO DATA':gap(v,p===1);g.classList.toggle('leader',p===1||isOut(n));
     $('timing-tower').append(row);if(p===1)leaderLap=lap?.[2]||1;
   }
-  txt('leader-lap',leaderLap);$('lap-progress').style.width=state.payload.mode==='live'?'0%':`${leaderLap/r.total_laps*100}%`;txt('race-clock',clock(state.t,true));
+  txt('leader-lap',leaderLap);$('lap-progress').style.width=state.payload.mode==='live'&&!r.distance_confirmed?'0%':`${leaderLap/r.total_laps*100}%`;txt('race-clock',clock(state.t,true));
   txt('track-status',flag.flag);$('track-status').className=`status-chip ${flag.style}`;
-  const weather=latestEvent(r.weather,state.t);txt('air-temp',weather?`${fixed(weather.air_temperature)}°`:'—');txt('track-temp',weather?`${fixed(weather.track_temperature)}°`:'—');txt('wind',weather?`${fixed(weather.wind_speed)} m/s`:'—');
+  const weatherSample=latestEvent(r.weather,state.t),weather=state.payload.mode==='live'&&weatherSample&&state.t-weatherSample.t>600?null:weatherSample;txt('air-temp',weather?`${fixed(weather.air_temperature)}°`:'—');txt('track-temp',weather?`${fixed(weather.track_temperature)}°`:'—');txt('wind',weather?`${fixed(weather.wind_speed)} m/s`:'—');
   const n=state.driver,d=driverInfo(n),lap=currentLap(n),done=completedLap(n),stint=currentStint(n,lap?.[2]||1),compound=stint?.compound||'UNKNOWN';
-  const age=stint?Math.max(0,(lap?.[2]||1)-stint.lap_start+(stint.tyre_age_at_start||0)):null;
+  const age=stint&&!(stint.current_sample&&stint.tyre_age_at_start==null)?Math.max(0,(lap?.[2]||1)-stint.lap_start+(stint.tyre_age_at_start||0)):null;
   const p=latest(r.positions[n],state.t)?.[1];const interval=latest(r.intervals[n],state.t);
   txt('telemetry-driver',`${d.name_acronym} / ${n}`);$('telemetry-driver').style.setProperty('--team',`#${d.team_colour||'73839b'}`);
   txt('driver-number',n);txt('driver-name',d.full_name);txt('driver-team',d.team_name);txt('driver-position',p?`P${p}`:'P—');document.querySelector('.driver-panel').style.setProperty('--team',`#${d.team_colour||'73839b'}`);
   const ownPits=r.pits.filter(s=>s.driver_number===n&&s.t<=state.t),lastPit=ownPits.at(-1);
   const lane=lastPit?.lane_duration,pitDisplay=lane==null?'—':lane>=60?`${Math.floor(lane/60)}m${fixed(lane%60)}s`:`${fixed(lane)}s`;
-  txt('driver-interval',interval&&state.t-interval[0]<45?gap(interval[2],p===1):'—');txt('driver-stops',ownPits.length);txt('driver-last-pit',pitDisplay);txt('driver-lap',lap?.[2]||'—');
+  const intervalAge=r.interval_ages?.[n],intervalFresh=r.interval_ages==null||(intervalAge!=null&&intervalAge+(performance.now()-state.snapshotAt)/1000<45);
+  txt('driver-interval',interval&&state.t-interval[0]<45&&intervalFresh?gap(interval[2],p===1):'—');txt('driver-stops',r.pit_counts?.[n]??ownPits.length);txt('driver-last-pit',pitDisplay);txt('driver-lap',lap?.[2]||'—');
   $('driver-last-pit').title=lane==null?'No completed stop recorded':`Recorded lane time ${fixed(lane,3)} s${lastPit.stop_duration==null?'':` · stationary service ${fixed(lastPit.stop_duration,3)} s`}${lane>45?' · extended stop, excluded from routine forecast':''}`;
   $('tyre-badge').className=`tyre ${compound.toLowerCase()}`;txt('tyre-badge',compound==='UNKNOWN'?'?':compound[0]);txt('tyre-name',compound);txt('tyre-age',age==null?'AGE UNAVAILABLE':`${age} LAPS ON TYRE`);txt('stint-label',`STINT ${stint?.stint_number||'—'}`);
   const history=r.stints.filter(s=>s.driver_number===n&&s.lap_start<=(lap?.[2]||1));
-  $('stint-history').replaceChildren(...history.map(s=>{const el=document.createElement('span');el.style.setProperty('--tyre',tyreColors[s.compound]||tyreColors.UNKNOWN);el.style.width=`${(Math.min(s.lap_end||lap?.[2]||1,lap?.[2]||1)-s.lap_start+1)/r.total_laps*100}%`;el.title=`${s.compound} · lap ${s.lap_start} onwards`;return el;}));
+  $('stint-history').replaceChildren(...history.filter(s=>!s.current_sample&&s.lap_start>=1).map(s=>{const el=document.createElement('span');el.style.setProperty('--tyre',tyreColors[s.compound]||tyreColors.UNKNOWN);el.style.width=`${(Math.min(s.lap_end||lap?.[2]||1,lap?.[2]||1)-s.lap_start+1)/r.total_laps*100}%`;el.title=`${s.compound} · lap ${s.lap_start} onwards`;return el;}));
   txt('last-lap',lapTime(done?.[3]));for(let i=1;i<=3;i++)txt(`sector-${i}`,done?.[3+i]==null?'—':fixed(done[3+i],3));
   const msgs=r.messages.filter(m=>m.t<=state.t).slice(-3).reverse();
   const messageKey=msgs.map(m=>m.t+m.message).join('|');
   if($('race-messages').dataset.key!==messageKey){$('race-messages').dataset.key=messageKey;$('race-messages').replaceChildren(...msgs.map(m=>{const el=document.createElement('div');el.className=`race-message ${m.flag==='RED'?'red':m.flag==='YELLOW'||(m.message||'').includes('SAFETY CAR')?'yellow':''}`;const time=document.createElement('time');time.textContent=clock(m.t,true)+' / '+(m.category||'RACE CONTROL').toUpperCase();const text=document.createElement('span');text.textContent=m.message;el.append(time,text);return el;}));if(!msgs.length){const p=document.createElement('p');p.className='empty-message';p.textContent='No race-control messages at this point in the race.';$('race-messages').append(p);}height();}
   txt('follow-caption',`FOLLOWING ${d.name_acronym} · #${n}${isOut(n)?' · NO LAP DATA':''}`);
-  const gps=latest(r.locations[n],state.t);txt('gps-health',gps&&state.t-gps[0]<10?'GPS POSITION FEED':'POSITION UNAVAILABLE');
+  const gps=latest(r.locations[n],state.t);txt('gps-health',r.capabilities?.position===false?'TIMING ONLY · NO LIVE GPS':gps&&state.t-gps[0]<10?'GPS POSITION FEED':'POSITION UNAVAILABLE');
   updateTelemetry();updateStrategy(compound,age,lap?.[2]||1,history,flag,weather);
   txt('playback-time',`${clock(state.t)} / ${clock(r.duration)}`);$('seek').value=state.t/r.duration*1000;$('seek').style.setProperty('--progress',`${state.t/r.duration*100}%`);
   txt('play',state.playing?'Ⅱ':'▶');$('play').setAttribute('aria-label',state.playing?'Pause replay':'Play replay');
   const liveAge=state.payload.freshness==null?null:state.payload.freshness+(performance.now()-state.snapshotAt)/1000;
   const liveDelay=liveAge==null?null:Math.max(liveAge,r.duration-state.t+(performance.now()-state.snapshotAt)/1000);
-  txt('playback-status',state.payload.mode==='live'?(liveAge==null?'NO SIGNAL':liveAge<35?'BUFFERED':'STALE'):state.playing?'PLAYING':'PAUSED');
-  txt('feed-label',state.payload.mode==='live'?(liveDelay==null?'LIVE · NO SIGNAL':`LIVE · ${fixed(liveDelay,0)}s DELAY`):'RECORDED TELEMETRY');
+  txt('playback-status',state.payload.mode==='live'?(liveAge==null?'NO SIGNAL':liveAge<45?(r.capabilities?.position===false?'TIMING ONLY':'BUFFERED'):'STALE'):state.playing?'PLAYING':'PAUSED');
+  txt('feed-label',state.payload.mode==='live'?(liveDelay==null?'LIVE · NO SIGNAL':`${r.capabilities?.position===false?'EXPERIMENTAL TIMING':'LIVE'} · ${fixed(liveDelay,0)}s DELAY`):'RECORDED TELEMETRY');
 }
 function updateTelemetry(){
   const rows=state.payload.driver===state.driver?state.payload.telemetry:[],sample=latest(rows,state.t);
@@ -133,7 +141,8 @@ function updateTelemetry(){
 function nominalPlan(remaining,compound,age,mask,pitLoss){
   // Finite-horizon lap-cost DP. A stop serves the current tyres this lap and
   // starts the chosen compound next lap. Two dry compounds are required.
-  const rates=[.08,.05,.03],cliffs=[22,32,42],offset=[0,.25,.55],memo=new Map();
+  const calibration=state.payload.weekend?.calibration;
+  const rates=[.08,.05,.03].map((prior,i)=>{const value=Number(calibration?.degrade_rate?.[i]);return Number.isFinite(value)&&value>0&&value<.5?value:prior;}),cliffs=[22,32,42].map((prior,i)=>{const value=Number(calibration?.cliff_lap?.[i]);return Number.isFinite(value)&&value>=5&&value<=100?value:prior;}),offset=[0,.25,.55],memo=new Map();
   function solve(left,c,a,used){
     if(left===0)return {cost:(used&(used-1))===0?1e5:0,actions:[]};
     const key=`${left},${c},${a},${used}`;if(memo.has(key))return memo.get(key);
@@ -156,17 +165,17 @@ function pitForecast(flag){
 }
 function timingContext(){
   const r=state.race,n=state.driver,ownPos=latest(r.positions[n],state.t)?.[1],ownLap=currentLap(n)?.[2];
-  const ownInterval=latest(r.intervals[n],state.t),ownGap=ownPos===1?0:Number(ownInterval?.[1]);
-  if(!ownPos||!ownLap||!Number.isFinite(ownGap)||(ownPos!==1&&(!ownInterval||state.t-ownInterval[0]>45)))return null;
+  const ownInterval=latest(r.intervals[n],state.t),ownGap=ownPos===1?0:numericGap(ownInterval?.[1]);
+  if(!ownPos||!ownLap||ownGap==null||(ownPos!==1&&(!ownInterval||state.t-ownInterval[0]>45)))return null;
   const rivals=[];
   for(const driver of r.drivers){
-    const number=driver.driver_number;if(number===n||isOut(number)||currentLap(number)?.[2]!==ownLap)continue;
+    const number=driver.driver_number;if(number===n||isOut(number)||Math.abs((currentLap(number)?.[2]||0)-ownLap)>1)continue;
     const position=latest(r.positions[number],state.t)?.[1],interval=latest(r.intervals[number],state.t);
     if(!position||!interval||state.t-interval[0]>45)continue;
-    const otherGap=position===1?0:Number(interval[1]);if(!Number.isFinite(otherGap))continue;
+    const otherGap=position===1?0:numericGap(interval[1]);if(otherGap==null)continue;
     const delta=otherGap-ownGap,stint=currentStint(number,ownLap);
-    const tyreAge=stint?Math.max(0,ownLap-stint.lap_start+(stint.tyre_age_at_start||0)):null;
-    const recentPit=r.pits.some(stop=>stop.driver_number===number&&stop.t<=state.t&&state.t-stop.t<180);
+    const tyreAge=stint&&!(stint.current_sample&&stint.tyre_age_at_start==null)?Math.max(0,ownLap-stint.lap_start+(stint.tyre_age_at_start||0)):null;
+    const recentPit=r.pits.some(stop=>stop.driver_number===number&&stop.t<=state.t&&state.t-stop.t<180)||r.stints.some(s=>s.driver_number===number&&!s.current_sample&&s.stint_number>1&&s.lap_start>0&&ownLap>=s.lap_start&&ownLap-s.lap_start<=2);
     rivals.push({driver,number,position,delta,relation:delta<0?'AHEAD':'BEHIND',compound:stint?.compound||'UNKNOWN',age:tyreAge,recentPit});
   }
   return {ownPos,ownLap,ownGap,rivals:rivals.sort((a,b)=>Math.abs(a.delta)-Math.abs(b.delta))};
@@ -199,8 +208,16 @@ function renderRivals(context,ownAge){
   if(!nearby.length){const empty=document.createElement('p');empty.className='empty-message';empty.textContent='Timing gaps will populate after the opening lap.';container.append(empty);}
   return nearby.map(r=>({...r,status:classifyRival(r,ownAge)}));
 }
+function recordStrategy(action,lap,stopLap,fit,pitLoss,rejoin,sampleAge){
+  if(state.payload.mode!=='live'||state.payload.driver!==state.driver)return;
+  const key=[state.race.id,state.driver,lap,action,stopLap,fit,rejoin].join('|'),now=performance.now();
+  if(state.lastStrategyRecord?.key===key&&now-state.lastStrategyRecord.at<30000)return;
+  state.lastStrategyRecord={key,at:now};
+  post('streamlit:setComponentValue',{value:{action:'strategy_record',nonce:Date.now()+Math.random(),value:{session_key:state.race.id,driver:state.driver,lap,t:state.t,action,stop_lap:stopLap,fit,pit_loss_s:pitLoss,rejoin_position:rejoin,sample_age_s:sampleAge,input_updated_at:state.race.updated_at,source:state.race.capabilities?.position===false?'free':'openf1'}},dataType:'json'});
+}
 function updateStrategy(compound,age,lap,history,flag,weather){
-  const finished=(completedLap(state.driver)?.[2]||0)>=state.race.total_laps;
+  const distanceKnown=state.payload.mode!=='live'||state.race.distance_confirmed;
+  const finished=distanceKnown&&(completedLap(state.driver)?.[2]||0)>=state.race.total_laps;
   const dry=['SOFT','MEDIUM','HARD'],remaining=finished?0:Math.max(0,state.race.total_laps-lap+1),forecast=pitForecast(flag),pitLoss=forecast?.net;
   txt('pit-lane',forecast?`${fixed(forecast.lane)} s`:'—');txt('pit-loss',forecast?`${fixed(pitLoss)} s`:'—');
   txt('pit-range',forecast?`Historical 10–90% lane range ${fixed(forecast.low)}–${fixed(forecast.high)} s · nominal loss range ${fixed(forecast.netLow)}–${fixed(forecast.netHigh)} s · ${forecast.observed} earlier routine stops in this race`:'No measured pit-time model available.');
@@ -211,33 +228,41 @@ function updateStrategy(compound,age,lap,history,flag,weather){
   const positionText=rejoin==null?'Rejoin projection waiting for stable timing gaps':`Pit now projects P${rejoin.position}${low&&high?` · range P${low.position}–P${high.position}`:''}${rejoin.margin!=null?` · ${fixed(rejoin.margin)}s clean-air margin`:''}`;
   const battleText=threat?` · ${threat.status.label}: ${threat.driver.name_acronym} ${fixed(Math.abs(threat.delta))}s behind`:opportunity?` · OVERCUT: ${opportunity.driver.name_acronym} has stopped` : '';
   txt('pit-risk',positionText+battleText);
-  const key=[state.race.id,state.driver,lap,compound,age,flag.flag,isOut(state.driver),finished,state.payload.mode,weather?.rainfall,Math.round((pitLoss||0)*2),rejoin?.position,threat?.number,opportunity?.number].join('|');if(state.planKey===key)return;state.planKey=key;
+  const timingAge=state.race.health?.timing_age_s,liveAge=state.payload.freshness;
+  const ageNow=value=>value==null?null:value+(performance.now()-state.snapshotAt)/1000;
+  const selectedAge=ageNow(state.race.capabilities?.position===false?timingAge:state.race.health?.gps_age_s??liveAge),feedAge=ageNow(liveAge);
+  const signalAge=state.payload.mode==='live'?(selectedAge==null||feedAge==null?null:Math.max(selectedAge,feedAge)):0;
+  const stale=state.payload.mode==='live'&&(state.payload.driver!==state.driver||signalAge==null||signalAge>45);
+  const key=[state.race.id,state.driver,lap,compound,age,flag.flag,isOut(state.driver),finished,state.payload.mode,stale,distanceKnown,weather?.rainfall,Math.round((pitLoss||0)*2),rejoin?.position,threat?.number,opportunity?.number].join('|');if(state.planKey===key)return;state.planKey=key;
   $('plan-bar').replaceChildren();
-  const unavailable=message=>{txt('strategy-action','Plan unavailable');txt('strategy-detail',message);txt('pit-window','—');txt('next-compound','—');for(const suffix of ['now','plan','late']){txt(`scenario-${suffix}-value`,'—');txt(`scenario-${suffix}-detail`,'Unavailable');}};
-  const situation=(action,message,fit,window)=>{txt('strategy-action',action);txt('strategy-detail',message);txt('pit-window',window);txt('next-compound',fit);txt('scenario-now-value',action);txt('scenario-now-detail',message);txt('scenario-plan-value',window);txt('scenario-plan-detail',`${fit} transition`);txt('scenario-late-value','REASSESS');txt('scenario-late-detail','Monitor race control and rival stops');};
-  if(pitLoss==null){unavailable('No measured pit-time forecast is available for this race.');return;}
-  if(state.payload.mode==='live'){unavailable('Live race distance is not confirmed. Rival timing remains visible while the model waits.');return;}
+  const unavailable=message=>{txt('strategy-action','Plan unavailable');txt('strategy-detail',message);txt('pit-window','—');txt('next-compound','—');for(const suffix of ['now','plan','late']){txt(`scenario-${suffix}-value`,'—');txt(`scenario-${suffix}-detail`,'Unavailable');}recordStrategy('unavailable',lap,null,null,pitLoss,rejoin?.position,signalAge);};
+  const situation=(action,message,fit,window)=>{txt('strategy-action',action);txt('strategy-detail',message);txt('pit-window',window);txt('next-compound',fit);txt('scenario-now-value',action);txt('scenario-now-detail',message);txt('scenario-plan-value',window);txt('scenario-plan-detail',`${fit} transition`);txt('scenario-late-value','REASSESS');txt('scenario-late-detail','Monitor race control and rival stops');recordStrategy(action==='Hold position'?'red_flag':action==='Prepare intermediates'?'weather_inter':'weather_hold',lap,null,fit,pitLoss,rejoin?.position,signalAge);};
+  if(stale){unavailable('Fresh race timing is unavailable. Calls are held until the selected feed resumes.');return;}
+  if(!distanceKnown){unavailable('Scheduled race distance is not verified for this session. Rival timing remains visible.');return;}
   if(flag.flag==='RED FLAG'){situation('Hold position','Race is suspended. Preserve tyre choice until restart conditions are confirmed.',compound,'RESTART');return;}
+  if(pitLoss==null){unavailable('No measured pit-time forecast is available for this race.');return;}
   if(weather?.rainfall&&!['INTERMEDIATE','WET'].includes(compound)){situation('Prepare intermediates','Rain is recorded at the circuit. Confirm grip and field crossover before committing.','INTER',`L${lap}–${Math.min(lap+2,state.race.total_laps)}`);return;}
   if(['INTERMEDIATE','WET'].includes(compound)){situation('Stay weather-aware','Track evolution and rival crossover laps now outweigh the nominal dry plan.',compound,weather?.rainfall?'CURRENT':'DRY CROSSOVER');return;}
+  if(age==null){unavailable('Current tyre age is unavailable. Waiting for a usable tyre-state update.');return;}
   if(isOut(state.driver)||remaining===0||remaining>100||!dry.includes(compound)){unavailable(isOut(state.driver)?'The selected car no longer has current lap data.':remaining===0?'Race complete.':'The dry model does not cover this race state.');return;}
   let mask=0;for(const s of history){const idx=dry.indexOf(s.compound);if(idx>=0)mask|=1<<idx;}
   const actions=nominalPlan(remaining,dry.indexOf(compound),age||0,mask,pitLoss),first=actions.findIndex(a=>a>=0);
   const stopLap=first>=0?lap+first:null,next=first>=0?dry[actions[first]]:null,windowStart=stopLap==null?null:Math.max(lap,stopLap-1),windowEnd=stopLap==null?null:Math.min(state.race.total_laps-1,stopLap+2);
-  const call=flag.neutral&&first<=2?'Box under neutralisation':threat&&first<=2?`Cover ${threat.driver.name_acronym}`:opportunity&&first>0?'Extend for overcut':first===0?'Pit this lap':first>0?'Stay out':'Run to the flag';
+  const call=flag.neutral&&first>=0&&first<=2?'Box under neutralisation':threat&&first>=0&&first<=2?`Cover ${threat.driver.name_acronym}`:opportunity&&first>0?'Extend for overcut':first===0?'Pit this lap':first>0?'Stay out':'Run to the flag';
   txt('strategy-action',call);txt('pit-window',stopLap==null?'TO FLAG':`L${windowStart}–${windowEnd}`);
   const confidence=forecast.observed>=3?'race-calibrated':forecast.observed?'blended':'historical-model';
-  txt('strategy-detail',first>=0?`Target lap ${stopLap} on ${next.toLowerCase()}. ${confidence} pit loss.${flag.neutral?' Safety Car/VSC reduces the modeled loss.':''}${threat?' Protect against the car behind.':''}${opportunity?' The car ahead has opened an overcut opportunity.':''}`:'No further stop is optimal in the nominal dry model.');
+  txt('strategy-detail',first>=0?`Target lap ${stopLap} on ${next.toLowerCase()}. ${confidence} pit loss.${state.payload.weekend?.calibration?' Practice-informed tyre estimate; fuel and traffic remain uncertain.':''}${flag.neutral?' Safety Car/VSC reduces the modeled loss.':''}${threat?' Monitor the car behind.':''}${opportunity?' Watch the car ahead through its out lap.':''}`:'No further stop is optimal in the nominal dry model.');
   txt('next-compound',first>=0?dry[actions[first]]:'—');
-  const nowPosition=rejoin?`P${rejoin.position}`:'—',plannedLoss=Math.max(0,pitLoss-(first>0?Math.min(2,first*.2):0)),planRejoin=rejoinAnalysis(plannedLoss,context),lateRejoin=rejoinAnalysis(pitLoss+Math.max(0,age-(compound==='SOFT'?22:compound==='MEDIUM'?32:42))*.15,context);
-  txt('scenario-now-value',nowPosition);txt('scenario-now-detail',threat?'Covers undercut threat':'Immediate track-position cost');
-  txt('scenario-plan-value',stopLap==null?'TO FLAG':`LAP ${stopLap}`);txt('scenario-plan-detail',stopLap==null?'No further stop planned':planRejoin?`Projected P${planRejoin.position} · ${next}`:`${next} · timing pending`);
-  txt('scenario-late-value',stopLap==null?'—':`LAP ${Math.min(stopLap+3,state.race.total_laps-1)}`);txt('scenario-late-detail',stopLap==null?'No extension scenario':lateRejoin?`Projected P${lateRejoin.position} · tyre offset risk`:'Build tyre offset · timing pending');
+  const nowPosition=rejoin?`P${rejoin.position}`:'—';
+  txt('scenario-now-value',nowPosition);txt('scenario-now-detail',threat?'Current gaps · undercut threat present':'Current-gap rejoin estimate');
+  txt('scenario-plan-value',stopLap==null?'TO FLAG':`LAP ${stopLap}`);txt('scenario-plan-detail',stopLap==null?'No further stop planned':`${next} · future rival gaps unknown`);
+  txt('scenario-late-value',stopLap==null?'—':`LAP ${Math.min(stopLap+3,state.race.total_laps-1)}`);txt('scenario-late-detail',stopLap==null?'No extension scenario':'Build tyre offset · reassess rival traffic');
   $('scenario-now').classList.toggle('warning',!!threat);$('scenario-plan').classList.toggle('warning',first<0);
   let c=compound,start=0;for(let i=0;i<=actions.length;i++){if(actions[i]>=0||i===actions.length){const el=document.createElement('span');el.style.width=`${(i-start+1)/Math.max(1,remaining)*100}%`;el.style.setProperty('--tyre',tyreColors[c]);el.title=c;$('plan-bar').append(el);if(i<actions.length)c=dry[actions[i]];start=i+1;}}
+  recordStrategy(flag.neutral&&first>=0&&first<=2?'neutralisation':threat&&first>=0&&first<=2?'cover':opportunity&&first>0?'overcut':first===0?'pit_now':first>0?'stay_out':'run_to_flag',lap,stopLap,next,pitLoss,rejoin?.position,signalAge);
 }
 let bounds=null;
-function fitTrack(){const points=state.race.track;bounds={minX:Math.min(...points.map(p=>p[0])),maxX:Math.max(...points.map(p=>p[0])),minY:Math.min(...points.map(p=>p[1])),maxY:Math.max(...points.map(p=>p[1]))};drawTrack();}
+function fitTrack(){const points=state.race.track;if(!points||points.length<2){bounds=null;const canvas=$('track-canvas');canvas.getContext('2d').clearRect(0,0,canvas.width,canvas.height);return;}bounds={minX:Math.min(...points.map(p=>p[0])),maxX:Math.max(...points.map(p=>p[0])),minY:Math.min(...points.map(p=>p[1])),maxY:Math.max(...points.map(p=>p[1]))};drawTrack();}
 function carPoint(number,t){
   const rows=state.race.locations[number]||[];const before=latest(rows,t);if(!before||t-before[0]>10||isOut(number))return null;
   // No interpolation over a missing GPS interval or through a red-flag outage.
@@ -271,7 +296,7 @@ function drawTrack(){
 }
 function frame(now){
   const delta=Math.min((now-state.lastFrame)/1000,.1);state.lastFrame=now;
-  if(state.race&&(state.playing||state.payload.mode==='live')){if(state.payload.mode==='live'){state.t=Math.max(0,Math.min(state.race.duration-3,state.t+delta));}else if(state.playing){state.t=Math.min(state.race.duration,state.t+delta*state.speed);if(state.t===state.race.duration)state.playing=false;}drawTrack();if(now-state.lastPanel>180){state.lastPanel=now;updatePanels();}if(now-state.lastSave>5000){state.lastSave=now;save();}}
+  if(state.race&&(state.playing||state.payload.mode==='live')){if(state.payload.mode==='live'){state.t=Math.max(0,Math.min(state.race.duration-(state.race.capabilities?.position===false?0:3),state.t+delta));}else if(state.playing){state.t=Math.min(state.race.duration,state.t+delta*state.speed);if(state.t===state.race.duration)state.playing=false;}drawTrack();if(now-state.lastPanel>180){state.lastPanel=now;updatePanels();}if(now-state.lastSave>5000){state.lastSave=now;save();}}
   requestAnimationFrame(frame);
 }
 $('play').onclick=()=>{if(state.t>=state.race.duration)state.t=0;state.playing=!state.playing;updatePanels();save();};

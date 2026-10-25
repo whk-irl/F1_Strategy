@@ -45,10 +45,17 @@ Historical replay is free, with OpenF1 coverage from 2023 onwards. The first loa
 a race downloads and caches its GPS and telemetry, which can take a minute or more.
 Positions are approximate; missing or stale data stays unavailable.
 
-The **Live** tab checks the current session, refreshes every 15 seconds and uses a
-20-second playback buffer. It shows a waiting screen between sessions. Current live
-data requires an [OpenF1 subscription](https://openf1.org/docs/) and server credentials;
-the public replay needs neither. See [connection setup](docs/guides/race-center.md#live-sessions).
+The **Live** tab refreshes every 15 seconds with a 20-second playback buffer. A local
+FastF1 public timing collector supplies an experimental free route for timing, gaps,
+tyres, weather and race control. GPS and full car telemetry are unavailable in that
+mode. The OpenF1 live route requires a subscription; historical replay remains free.
+See the [US GP live-test guide](docs/guides/live-race-test.md).
+
+The October 24 US GP update imports **1,799 FP1/FP2/FP3/qualifying laps**, keeps the
+published starting grid distinct from qualifying order, and feeds practice estimates
+into the 56-lap race reference plan. Run `./scripts/start_usgp_live.ps1` locally before
+the race. Public-stream connection is verified; fresh race delivery must be checked
+during the session. This updates weekend calibration, without retraining the IQL policy.
 
 ## Latest training result
 
@@ -153,7 +160,7 @@ uv run mypy services/ ml/
 uv run pytest
 ```
 
-The temporal-IQL update passes **171 tests with 89.24% configured coverage**, plus Ruff
+The US GP live-test update passes **228 tests with 86.95% configured coverage**, plus Ruff
 and mypy checks. Replay controls and desktop/mobile layouts were checked in the
 browser. Authenticated active-session timing still requires verification during a race.
 
