@@ -242,13 +242,30 @@ def render_race_center() -> None:
                     st.dataframe(rows, hide_index=True, use_container_width=True)
             with tabs[-2]:
                 st.dataframe(
-                    prepared.get("starting_grid", []), hide_index=True, use_container_width=True
+                    [
+                        {
+                            "Grid": row.get("position"),
+                            "Car": row.get("driver_number"),
+                            "Driver": row.get("name_acronym"),
+                            "Team": row.get("team_name"),
+                            "Qualifying lap (s)": row.get("duration"),
+                        }
+                        for row in prepared.get("starting_grid", [])
+                    ],
+                    hide_index=True,
+                    use_container_width=True,
                 )
             with tabs[-1]:
                 calibration = prepared.get("calibration", {})
                 st.dataframe(
                     [
-                        {"Compound": compound, **evidence}
+                        {
+                            "Compound": compound,
+                            "Clean laps": evidence.get("clean_laps"),
+                            "Long stints": evidence.get("usable_stints"),
+                            "Observed pace slope (s/lap)": evidence.get("observed_slope_s_per_lap"),
+                            "Source": evidence.get("source"),
+                        }
                         for compound, evidence in calibration.get("compound_evidence", {}).items()
                     ],
                     hide_index=True,
