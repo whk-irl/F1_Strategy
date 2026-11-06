@@ -82,6 +82,7 @@ data/*
 .fastf1_cache/
 fastf1_cache/
 cache/
+acquisition-*.log
 
 # Parquet / CSV / feather dumps (except the baked deploy files above)
 *.parquet

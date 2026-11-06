@@ -1,0 +1,2107 @@
+{
+  "format_version": 1,
+  "updated_at": "2026-10-25T04:37:14.572981+00:00",
+  "year": 2026,
+  "meeting_key": 1297,
+  "circuit_short_name": "Austin",
+  "scheduled_laps": 56,
+  "race_session": {
+    "session_key": 11396,
+    "session_type": "Race",
+    "session_name": "Race",
+    "date_start": "2026-10-25T20:00:00+00:00",
+    "date_end": "2026-10-25T22:00:00+00:00",
+    "meeting_key": 1297,
+    "circuit_key": 9,
+    "circuit_short_name": "Austin",
+    "country_key": 19,
+    "country_code": "USA",
+    "country_name": "United States",
+    "location": "Austin",
+    "gmt_offset": "-05:00:00",
+    "year": 2026,
+    "is_cancelled": false
+  },
+  "sessions": [
+    {
+      "code": "FP1",
+      "meta": {
+        "session_key": 11389,
+        "session_type": "Practice",
+        "session_name": "Practice 1",
+        "date_start": "2026-10-23T17:30:00+00:00",
+        "date_end": "2026-10-23T18:30:00+00:00",
+        "meeting_key": 1297,
+        "circuit_key": 9,
+        "circuit_short_name": "Austin",
+        "country_key": 19,
+        "country_code": "USA",
+        "country_name": "United States",
+        "location": "Austin",
+        "gmt_offset": "-05:00:00",
+        "year": 2026,
+        "is_cancelled": false
+      },
+      "rows": 507,
+      "classification": [
+        {
+          "position": 1,
+          "driver_number": 16,
+          "name_acronym": "LEC",
+          "team_name": "Ferrari",
+          "duration": 96.052,
+          "number_of_laps": 26
+        },
+        {
+          "position": 2,
+          "driver_number": 3,
+          "name_acronym": "VER",
+          "team_name": "Red Bull Racing",
+          "duration": 96.136,
+          "number_of_laps": 25
+        },
+        {
+          "position": 3,
+          "driver_number": 1,
+          "name_acronym": "NOR",
+          "team_name": "McLaren",
+          "duration": 96.297,
+          "number_of_laps": 22
+        },
+        {
+          "position": 4,
+          "driver_number": 63,
+          "name_acronym": "RUS",
+          "team_name": "Mercedes",
+          "duration": 96.378,
+          "number_of_laps": 26
+        },
+        {
+          "position": 5,
+          "driver_number": 12,
+          "name_acronym": "ANT",
+          "team_name": "Mercedes",
+          "duration": 96.533,
+          "number_of_laps": 25
+        },
+        {
+          "position": 6,
+          "driver_number": 44,
+          "name_acronym": "HAM",
+          "team_name": "Ferrari",
+          "duration": 96.555,
+          "number_of_laps": 23
+        },
+        {
+          "position": 7,
+          "driver_number": 81,
+          "name_acronym": "PIA",
+          "team_name": "McLaren",
+          "duration": 96.786,
+          "number_of_laps": 23
+        },
+        {
+          "position": 8,
+          "driver_number": 5,
+          "name_acronym": "BOR",
+          "team_name": "Audi",
+          "duration": 96.995,
+          "number_of_laps": 23
+        },
+        {
+          "position": 9,
+          "driver_number": 41,
+          "name_acronym": "LIN",
+          "team_name": "Racing Bulls",
+          "duration": 97.063,
+          "number_of_laps": 26
+        },
+        {
+          "position": 10,
+          "driver_number": 30,
+          "name_acronym": "LAW",
+          "team_name": "Racing Bulls",
+          "duration": 97.309,
+          "number_of_laps": 22
+        },
+        {
+          "position": 11,
+          "driver_number": 87,
+          "name_acronym": "BEA",
+          "team_name": "Haas F1 Team",
+          "duration": 97.665,
+          "number_of_laps": 23
+        },
+        {
+          "position": 12,
+          "driver_number": 14,
+          "name_acronym": "ALO",
+          "team_name": "Aston Martin",
+          "duration": 97.688,
+          "number_of_laps": 22
+        },
+        {
+          "position": 13,
+          "driver_number": 18,
+          "name_acronym": "STR",
+          "team_name": "Aston Martin",
+          "duration": 97.783,
+          "number_of_laps": 25
+        },
+        {
+          "position": 14,
+          "driver_number": 6,
+          "name_acronym": "HAD",
+          "team_name": "Red Bull Racing",
+          "duration": 97.79,
+          "number_of_laps": 23
+        },
+        {
+          "position": 15,
+          "driver_number": 10,
+          "name_acronym": "GAS",
+          "team_name": "Alpine",
+          "duration": 97.801,
+          "number_of_laps": 23
+        },
+        {
+          "position": 16,
+          "driver_number": 31,
+          "name_acronym": "OCO",
+          "team_name": "Haas F1 Team",
+          "duration": 97.896,
+          "number_of_laps": 26
+        },
+        {
+          "position": 17,
+          "driver_number": 43,
+          "name_acronym": "COL",
+          "team_name": "Alpine",
+          "duration": 98.121,
+          "number_of_laps": 23
+        },
+        {
+          "position": 18,
+          "driver_number": 27,
+          "name_acronym": "HUL",
+          "team_name": "Audi",
+          "duration": 98.122,
+          "number_of_laps": 21
+        },
+        {
+          "position": 19,
+          "driver_number": 55,
+          "name_acronym": "SAI",
+          "team_name": "Williams",
+          "duration": 98.846,
+          "number_of_laps": 19
+        },
+        {
+          "position": 20,
+          "driver_number": 77,
+          "name_acronym": "BOT",
+          "team_name": "Cadillac",
+          "duration": 99.053,
+          "number_of_laps": 21
+        },
+        {
+          "position": 21,
+          "driver_number": 25,
+          "name_acronym": "HER",
+          "team_name": "Cadillac",
+          "duration": 99.979,
+          "number_of_laps": 21
+        },
+        {
+          "position": 22,
+          "driver_number": 23,
+          "name_acronym": "ALB",
+          "team_name": "Williams",
+          "duration": 136.468,
+          "number_of_laps": 19
+        }
+      ],
+      "files": {
+        "source": {
+          "path": "data\\weekends\\2026-united-states\\FP1\\source.json",
+          "sha256": "26343cfe46f8363e70ee07900849ee02fbdad63c2ce11dbff17405fcb4600e0c"
+        },
+        "gold": {
+          "path": "data\\weekends\\2026-united-states\\FP1\\laps.parquet",
+          "sha256": "44a6b16278410c105a06649116cd899e5998495f35e7b72a268be8fd1f605b5c"
+        }
+      }
+    },
+    {
+      "code": "FP2",
+      "meta": {
+        "session_key": 11390,
+        "session_type": "Practice",
+        "session_name": "Practice 2",
+        "date_start": "2026-10-23T21:00:00+00:00",
+        "date_end": "2026-10-23T22:00:00+00:00",
+        "meeting_key": 1297,
+        "circuit_key": 9,
+        "circuit_short_name": "Austin",
+        "country_key": 19,
+        "country_code": "USA",
+        "country_name": "United States",
+        "location": "Austin",
+        "gmt_offset": "-05:00:00",
+        "year": 2026,
+        "is_cancelled": false
+      },
+      "rows": 589,
+      "classification": [
+        {
+          "position": 1,
+          "driver_number": 16,
+          "name_acronym": "LEC",
+          "team_name": "Ferrari",
+          "duration": 95.291,
+          "number_of_laps": 30
+        },
+        {
+          "position": 2,
+          "driver_number": 12,
+          "name_acronym": "ANT",
+          "team_name": "Mercedes",
+          "duration": 95.333,
+          "number_of_laps": 25
+        },
+        {
+          "position": 3,
+          "driver_number": 3,
+          "name_acronym": "VER",
+          "team_name": "Red Bull Racing",
+          "duration": 95.48,
+          "number_of_laps": 24
+        },
+        {
+          "position": 4,
+          "driver_number": 44,
+          "name_acronym": "HAM",
+          "team_name": "Ferrari",
+          "duration": 95.906,
+          "number_of_laps": 26
+        },
+        {
+          "position": 5,
+          "driver_number": 63,
+          "name_acronym": "RUS",
+          "team_name": "Mercedes",
+          "duration": 96.035,
+          "number_of_laps": 27
+        },
+        {
+          "position": 6,
+          "driver_number": 30,
+          "name_acronym": "LAW",
+          "team_name": "Racing Bulls",
+          "duration": 96.331,
+          "number_of_laps": 27
+        },
+        {
+          "position": 7,
+          "driver_number": 1,
+          "name_acronym": "NOR",
+          "team_name": "McLaren",
+          "duration": 96.373,
+          "number_of_laps": 27
+        },
+        {
+          "position": 8,
+          "driver_number": 81,
+          "name_acronym": "PIA",
+          "team_name": "McLaren",
+          "duration": 96.387,
+          "number_of_laps": 27
+        },
+        {
+          "position": 9,
+          "driver_number": 6,
+          "name_acronym": "HAD",
+          "team_name": "Red Bull Racing",
+          "duration": 96.411,
+          "number_of_laps": 24
+        },
+        {
+          "position": 10,
+          "driver_number": 87,
+          "name_acronym": "BEA",
+          "team_name": "Haas F1 Team",
+          "duration": 96.536,
+          "number_of_laps": 28
+        },
+        {
+          "position": 11,
+          "driver_number": 5,
+          "name_acronym": "BOR",
+          "team_name": "Audi",
+          "duration": 96.832,
+          "number_of_laps": 27
+        },
+        {
+          "position": 12,
+          "driver_number": 10,
+          "name_acronym": "GAS",
+          "team_name": "Alpine",
+          "duration": 96.84,
+          "number_of_laps": 27
+        },
+        {
+          "position": 13,
+          "driver_number": 41,
+          "name_acronym": "LIN",
+          "team_name": "Racing Bulls",
+          "duration": 96.959,
+          "number_of_laps": 29
+        },
+        {
+          "position": 14,
+          "driver_number": 31,
+          "name_acronym": "OCO",
+          "team_name": "Haas F1 Team",
+          "duration": 97.111,
+          "number_of_laps": 26
+        },
+        {
+          "position": 15,
+          "driver_number": 43,
+          "name_acronym": "COL",
+          "team_name": "Alpine",
+          "duration": 97.201,
+          "number_of_laps": 32
+        },
+        {
+          "position": 16,
+          "driver_number": 14,
+          "name_acronym": "ALO",
+          "team_name": "Aston Martin",
+          "duration": 97.235,
+          "number_of_laps": 26
+        },
+        {
+          "position": 17,
+          "driver_number": 18,
+          "name_acronym": "STR",
+          "team_name": "Aston Martin",
+          "duration": 97.269,
+          "number_of_laps": 28
+        },
+        {
+          "position": 18,
+          "driver_number": 27,
+          "name_acronym": "HUL",
+          "team_name": "Audi",
+          "duration": 97.43,
+          "number_of_laps": 26
+        },
+        {
+          "position": 19,
+          "driver_number": 77,
+          "name_acronym": "BOT",
+          "team_name": "Cadillac",
+          "duration": 98.422,
+          "number_of_laps": 24
+        },
+        {
+          "position": 20,
+          "driver_number": 55,
+          "name_acronym": "SAI",
+          "team_name": "Williams",
+          "duration": 98.446,
+          "number_of_laps": 28
+        },
+        {
+          "position": 21,
+          "driver_number": 11,
+          "name_acronym": "PER",
+          "team_name": "Cadillac",
+          "duration": 99.036,
+          "number_of_laps": 24
+        },
+        {
+          "position": 22,
+          "driver_number": 23,
+          "name_acronym": "ALB",
+          "team_name": "Williams",
+          "duration": 103.426,
+          "number_of_laps": 27
+        }
+      ],
+      "files": {
+        "source": {
+          "path": "data\\weekends\\2026-united-states\\FP2\\source.json",
+          "sha256": "aa996342cbc9165aad5a32a1b815e417b8700aee39cacbdd873df281eed58e2d"
+        },
+        "gold": {
+          "path": "data\\weekends\\2026-united-states\\FP2\\laps.parquet",
+          "sha256": "fd6325e811859551564f9ff75820305cfa64e16e64829e436bdfd9113d63fa2a"
+        }
+      }
+    },
+    {
+      "code": "FP3",
+      "meta": {
+        "session_key": 11391,
+        "session_type": "Practice",
+        "session_name": "Practice 3",
+        "date_start": "2026-10-24T17:30:00+00:00",
+        "date_end": "2026-10-24T18:30:00+00:00",
+        "meeting_key": 1297,
+        "circuit_key": 9,
+        "circuit_short_name": "Austin",
+        "country_key": 19,
+        "country_code": "USA",
+        "country_name": "United States",
+        "location": "Austin",
+        "gmt_offset": "-05:00:00",
+        "year": 2026,
+        "is_cancelled": false
+      },
+      "rows": 423,
+      "classification": [
+        {
+          "position": 1,
+          "driver_number": 44,
+          "name_acronym": "HAM",
+          "team_name": "Ferrari",
+          "duration": 94.893,
+          "number_of_laps": 21
+        },
+        {
+          "position": 2,
+          "driver_number": 3,
+          "name_acronym": "VER",
+          "team_name": "Red Bull Racing",
+          "duration": 95.061,
+          "number_of_laps": 16
+        },
+        {
+          "position": 3,
+          "driver_number": 16,
+          "name_acronym": "LEC",
+          "team_name": "Ferrari",
+          "duration": 95.127,
+          "number_of_laps": 20
+        },
+        {
+          "position": 4,
+          "driver_number": 12,
+          "name_acronym": "ANT",
+          "team_name": "Mercedes",
+          "duration": 95.196,
+          "number_of_laps": 16
+        },
+        {
+          "position": 5,
+          "driver_number": 63,
+          "name_acronym": "RUS",
+          "team_name": "Mercedes",
+          "duration": 95.381,
+          "number_of_laps": 18
+        },
+        {
+          "position": 6,
+          "driver_number": 81,
+          "name_acronym": "PIA",
+          "team_name": "McLaren",
+          "duration": 95.531,
+          "number_of_laps": 16
+        },
+        {
+          "position": 7,
+          "driver_number": 27,
+          "name_acronym": "HUL",
+          "team_name": "Audi",
+          "duration": 95.591,
+          "number_of_laps": 19
+        },
+        {
+          "position": 8,
+          "driver_number": 1,
+          "name_acronym": "NOR",
+          "team_name": "McLaren",
+          "duration": 95.706,
+          "number_of_laps": 17
+        },
+        {
+          "position": 9,
+          "driver_number": 10,
+          "name_acronym": "GAS",
+          "team_name": "Alpine",
+          "duration": 95.904,
+          "number_of_laps": 24
+        },
+        {
+          "position": 10,
+          "driver_number": 6,
+          "name_acronym": "HAD",
+          "team_name": "Red Bull Racing",
+          "duration": 95.93,
+          "number_of_laps": 20
+        },
+        {
+          "position": 11,
+          "driver_number": 30,
+          "name_acronym": "LAW",
+          "team_name": "Racing Bulls",
+          "duration": 95.931,
+          "number_of_laps": 17
+        },
+        {
+          "position": 12,
+          "driver_number": 41,
+          "name_acronym": "LIN",
+          "team_name": "Racing Bulls",
+          "duration": 96.081,
+          "number_of_laps": 18
+        },
+        {
+          "position": 13,
+          "driver_number": 5,
+          "name_acronym": "BOR",
+          "team_name": "Audi",
+          "duration": 96.176,
+          "number_of_laps": 23
+        },
+        {
+          "position": 14,
+          "driver_number": 87,
+          "name_acronym": "BEA",
+          "team_name": "Haas F1 Team",
+          "duration": 96.235,
+          "number_of_laps": 17
+        },
+        {
+          "position": 15,
+          "driver_number": 43,
+          "name_acronym": "COL",
+          "team_name": "Alpine",
+          "duration": 96.251,
+          "number_of_laps": 22
+        },
+        {
+          "position": 16,
+          "driver_number": 14,
+          "name_acronym": "ALO",
+          "team_name": "Aston Martin",
+          "duration": 96.455,
+          "number_of_laps": 19
+        },
+        {
+          "position": 17,
+          "driver_number": 31,
+          "name_acronym": "OCO",
+          "team_name": "Haas F1 Team",
+          "duration": 96.742,
+          "number_of_laps": 18
+        },
+        {
+          "position": 18,
+          "driver_number": 18,
+          "name_acronym": "STR",
+          "team_name": "Aston Martin",
+          "duration": 97.131,
+          "number_of_laps": 12
+        },
+        {
+          "position": 19,
+          "driver_number": 23,
+          "name_acronym": "ALB",
+          "team_name": "Williams",
+          "duration": 97.668,
+          "number_of_laps": 22
+        },
+        {
+          "position": 20,
+          "driver_number": 55,
+          "name_acronym": "SAI",
+          "team_name": "Williams",
+          "duration": 97.711,
+          "number_of_laps": 21
+        },
+        {
+          "position": 21,
+          "driver_number": 11,
+          "name_acronym": "PER",
+          "team_name": "Cadillac",
+          "duration": 97.884,
+          "number_of_laps": 25
+        },
+        {
+          "position": 22,
+          "driver_number": 77,
+          "name_acronym": "BOT",
+          "team_name": "Cadillac",
+          "duration": 98.765,
+          "number_of_laps": 22
+        }
+      ],
+      "files": {
+        "source": {
+          "path": "data\\weekends\\2026-united-states\\FP3\\source.json",
+          "sha256": "1006d581bdf98a5f46d9ef6062f3d118a1782b6d5e24b44ff65ee60ee83f7711"
+        },
+        "gold": {
+          "path": "data\\weekends\\2026-united-states\\FP3\\laps.parquet",
+          "sha256": "1d9fc7ae51beb925d00b4db4b43d9d3d136db3f0a00883ce58aa70a711201a6a"
+        }
+      }
+    },
+    {
+      "code": "Q",
+      "meta": {
+        "session_key": 11392,
+        "session_type": "Qualifying",
+        "session_name": "Qualifying",
+        "date_start": "2026-10-24T21:00:00+00:00",
+        "date_end": "2026-10-24T22:00:00+00:00",
+        "meeting_key": 1297,
+        "circuit_key": 9,
+        "circuit_short_name": "Austin",
+        "country_key": 19,
+        "country_code": "USA",
+        "country_name": "United States",
+        "location": "Austin",
+        "gmt_offset": "-05:00:00",
+        "year": 2026,
+        "is_cancelled": false
+      },
+      "rows": 280,
+      "classification": [
+        {
+          "position": 1,
+          "driver_number": 12,
+          "name_acronym": "ANT",
+          "team_name": "Mercedes",
+          "duration": [
+            95.39,
+            94.278,
+            94.035
+          ],
+          "number_of_laps": 18
+        },
+        {
+          "position": 2,
+          "driver_number": 3,
+          "name_acronym": "VER",
+          "team_name": "Red Bull Racing",
+          "duration": [
+            95.215,
+            94.471,
+            94.214
+          ],
+          "number_of_laps": 12
+        },
+        {
+          "position": 3,
+          "driver_number": 6,
+          "name_acronym": "HAD",
+          "team_name": "Red Bull Racing",
+          "duration": [
+            95.286,
+            94.887,
+            94.25
+          ],
+          "number_of_laps": 12
+        },
+        {
+          "position": 4,
+          "driver_number": 16,
+          "name_acronym": "LEC",
+          "team_name": "Ferrari",
+          "duration": [
+            95.2,
+            94.198,
+            94.267
+          ],
+          "number_of_laps": 15
+        },
+        {
+          "position": 5,
+          "driver_number": 44,
+          "name_acronym": "HAM",
+          "team_name": "Ferrari",
+          "duration": [
+            95.355,
+            94.833,
+            94.311
+          ],
+          "number_of_laps": 14
+        },
+        {
+          "position": 6,
+          "driver_number": 63,
+          "name_acronym": "RUS",
+          "team_name": "Mercedes",
+          "duration": [
+            95.73,
+            94.305,
+            94.476
+          ],
+          "number_of_laps": 18
+        },
+        {
+          "position": 7,
+          "driver_number": 81,
+          "name_acronym": "PIA",
+          "team_name": "McLaren",
+          "duration": [
+            95.842,
+            94.818,
+            94.803
+          ],
+          "number_of_laps": 20
+        },
+        {
+          "position": 8,
+          "driver_number": 1,
+          "name_acronym": "NOR",
+          "team_name": "McLaren",
+          "duration": [
+            95.029,
+            94.539,
+            95.049
+          ],
+          "number_of_laps": 15
+        },
+        {
+          "position": 9,
+          "driver_number": 41,
+          "name_acronym": "LIN",
+          "team_name": "Racing Bulls",
+          "duration": [
+            95.755,
+            94.95,
+            96.049
+          ],
+          "number_of_laps": 15
+        },
+        {
+          "position": 10,
+          "driver_number": 30,
+          "name_acronym": "LAW",
+          "team_name": "Racing Bulls",
+          "duration": [
+            95.662,
+            95.058,
+            null
+          ],
+          "number_of_laps": 9
+        },
+        {
+          "position": 11,
+          "driver_number": 10,
+          "name_acronym": "GAS",
+          "team_name": "Alpine",
+          "duration": [
+            95.969,
+            95.08,
+            null
+          ],
+          "number_of_laps": 12
+        },
+        {
+          "position": 12,
+          "driver_number": 27,
+          "name_acronym": "HUL",
+          "team_name": "Audi",
+          "duration": [
+            95.704,
+            95.158,
+            null
+          ],
+          "number_of_laps": 12
+        },
+        {
+          "position": 13,
+          "driver_number": 5,
+          "name_acronym": "BOR",
+          "team_name": "Audi",
+          "duration": [
+            95.632,
+            95.691,
+            null
+          ],
+          "number_of_laps": 12
+        },
+        {
+          "position": 14,
+          "driver_number": 43,
+          "name_acronym": "COL",
+          "team_name": "Alpine",
+          "duration": [
+            95.898,
+            95.722,
+            null
+          ],
+          "number_of_laps": 12
+        },
+        {
+          "position": 15,
+          "driver_number": 14,
+          "name_acronym": "ALO",
+          "team_name": "Aston Martin",
+          "duration": [
+            96.24,
+            95.818,
+            null
+          ],
+          "number_of_laps": 15
+        },
+        {
+          "position": 16,
+          "driver_number": 87,
+          "name_acronym": "BEA",
+          "team_name": "Haas F1 Team",
+          "duration": [
+            96.175,
+            96.031,
+            null
+          ],
+          "number_of_laps": 15
+        },
+        {
+          "position": 17,
+          "driver_number": 31,
+          "name_acronym": "OCO",
+          "team_name": "Haas F1 Team",
+          "duration": [
+            96.531,
+            null,
+            null
+          ],
+          "number_of_laps": 9
+        },
+        {
+          "position": 18,
+          "driver_number": 18,
+          "name_acronym": "STR",
+          "team_name": "Aston Martin",
+          "duration": [
+            96.677,
+            null,
+            null
+          ],
+          "number_of_laps": 9
+        },
+        {
+          "position": 19,
+          "driver_number": 55,
+          "name_acronym": "SAI",
+          "team_name": "Williams",
+          "duration": [
+            96.77,
+            null,
+            null
+          ],
+          "number_of_laps": 9
+        },
+        {
+          "position": 20,
+          "driver_number": 23,
+          "name_acronym": "ALB",
+          "team_name": "Williams",
+          "duration": [
+            96.967,
+            null,
+            null
+          ],
+          "number_of_laps": 9
+        },
+        {
+          "position": 21,
+          "driver_number": 11,
+          "name_acronym": "PER",
+          "team_name": "Cadillac",
+          "duration": [
+            97.433,
+            null,
+            null
+          ],
+          "number_of_laps": 9
+        },
+        {
+          "position": 22,
+          "driver_number": 77,
+          "name_acronym": "BOT",
+          "team_name": "Cadillac",
+          "duration": [
+            97.523,
+            null,
+            null
+          ],
+          "number_of_laps": 9
+        }
+      ],
+      "files": {
+        "source": {
+          "path": "data\\weekends\\2026-united-states\\Q\\source.json",
+          "sha256": "7e06a176613588cb35a91c36c5286a7c5c8b411a4e9bb2af534c156d83a0497b"
+        },
+        "gold": {
+          "path": "data\\weekends\\2026-united-states\\Q\\laps.parquet",
+          "sha256": "751497440164b960792b58987d10312bec8bcbea2c7c6de2f0d63f3b5b3a0cbe"
+        }
+      }
+    }
+  ],
+  "qualifying": [
+    {
+      "position": 1,
+      "driver_number": 12,
+      "name_acronym": "ANT",
+      "team_name": "Mercedes",
+      "duration": [
+        95.39,
+        94.278,
+        94.035
+      ],
+      "number_of_laps": 18
+    },
+    {
+      "position": 2,
+      "driver_number": 3,
+      "name_acronym": "VER",
+      "team_name": "Red Bull Racing",
+      "duration": [
+        95.215,
+        94.471,
+        94.214
+      ],
+      "number_of_laps": 12
+    },
+    {
+      "position": 3,
+      "driver_number": 6,
+      "name_acronym": "HAD",
+      "team_name": "Red Bull Racing",
+      "duration": [
+        95.286,
+        94.887,
+        94.25
+      ],
+      "number_of_laps": 12
+    },
+    {
+      "position": 4,
+      "driver_number": 16,
+      "name_acronym": "LEC",
+      "team_name": "Ferrari",
+      "duration": [
+        95.2,
+        94.198,
+        94.267
+      ],
+      "number_of_laps": 15
+    },
+    {
+      "position": 5,
+      "driver_number": 44,
+      "name_acronym": "HAM",
+      "team_name": "Ferrari",
+      "duration": [
+        95.355,
+        94.833,
+        94.311
+      ],
+      "number_of_laps": 14
+    },
+    {
+      "position": 6,
+      "driver_number": 63,
+      "name_acronym": "RUS",
+      "team_name": "Mercedes",
+      "duration": [
+        95.73,
+        94.305,
+        94.476
+      ],
+      "number_of_laps": 18
+    },
+    {
+      "position": 7,
+      "driver_number": 81,
+      "name_acronym": "PIA",
+      "team_name": "McLaren",
+      "duration": [
+        95.842,
+        94.818,
+        94.803
+      ],
+      "number_of_laps": 20
+    },
+    {
+      "position": 8,
+      "driver_number": 1,
+      "name_acronym": "NOR",
+      "team_name": "McLaren",
+      "duration": [
+        95.029,
+        94.539,
+        95.049
+      ],
+      "number_of_laps": 15
+    },
+    {
+      "position": 9,
+      "driver_number": 41,
+      "name_acronym": "LIN",
+      "team_name": "Racing Bulls",
+      "duration": [
+        95.755,
+        94.95,
+        96.049
+      ],
+      "number_of_laps": 15
+    },
+    {
+      "position": 10,
+      "driver_number": 30,
+      "name_acronym": "LAW",
+      "team_name": "Racing Bulls",
+      "duration": [
+        95.662,
+        95.058,
+        null
+      ],
+      "number_of_laps": 9
+    },
+    {
+      "position": 11,
+      "driver_number": 10,
+      "name_acronym": "GAS",
+      "team_name": "Alpine",
+      "duration": [
+        95.969,
+        95.08,
+        null
+      ],
+      "number_of_laps": 12
+    },
+    {
+      "position": 12,
+      "driver_number": 27,
+      "name_acronym": "HUL",
+      "team_name": "Audi",
+      "duration": [
+        95.704,
+        95.158,
+        null
+      ],
+      "number_of_laps": 12
+    },
+    {
+      "position": 13,
+      "driver_number": 5,
+      "name_acronym": "BOR",
+      "team_name": "Audi",
+      "duration": [
+        95.632,
+        95.691,
+        null
+      ],
+      "number_of_laps": 12
+    },
+    {
+      "position": 14,
+      "driver_number": 43,
+      "name_acronym": "COL",
+      "team_name": "Alpine",
+      "duration": [
+        95.898,
+        95.722,
+        null
+      ],
+      "number_of_laps": 12
+    },
+    {
+      "position": 15,
+      "driver_number": 14,
+      "name_acronym": "ALO",
+      "team_name": "Aston Martin",
+      "duration": [
+        96.24,
+        95.818,
+        null
+      ],
+      "number_of_laps": 15
+    },
+    {
+      "position": 16,
+      "driver_number": 87,
+      "name_acronym": "BEA",
+      "team_name": "Haas F1 Team",
+      "duration": [
+        96.175,
+        96.031,
+        null
+      ],
+      "number_of_laps": 15
+    },
+    {
+      "position": 17,
+      "driver_number": 31,
+      "name_acronym": "OCO",
+      "team_name": "Haas F1 Team",
+      "duration": [
+        96.531,
+        null,
+        null
+      ],
+      "number_of_laps": 9
+    },
+    {
+      "position": 18,
+      "driver_number": 18,
+      "name_acronym": "STR",
+      "team_name": "Aston Martin",
+      "duration": [
+        96.677,
+        null,
+        null
+      ],
+      "number_of_laps": 9
+    },
+    {
+      "position": 19,
+      "driver_number": 55,
+      "name_acronym": "SAI",
+      "team_name": "Williams",
+      "duration": [
+        96.77,
+        null,
+        null
+      ],
+      "number_of_laps": 9
+    },
+    {
+      "position": 20,
+      "driver_number": 23,
+      "name_acronym": "ALB",
+      "team_name": "Williams",
+      "duration": [
+        96.967,
+        null,
+        null
+      ],
+      "number_of_laps": 9
+    },
+    {
+      "position": 21,
+      "driver_number": 11,
+      "name_acronym": "PER",
+      "team_name": "Cadillac",
+      "duration": [
+        97.433,
+        null,
+        null
+      ],
+      "number_of_laps": 9
+    },
+    {
+      "position": 22,
+      "driver_number": 77,
+      "name_acronym": "BOT",
+      "team_name": "Cadillac",
+      "duration": [
+        97.523,
+        null,
+        null
+      ],
+      "number_of_laps": 9
+    }
+  ],
+  "starting_grid": [
+    {
+      "position": 1,
+      "driver_number": 12,
+      "name_acronym": "ANT",
+      "team_name": "Mercedes",
+      "duration": 94.035,
+      "number_of_laps": null
+    },
+    {
+      "position": 2,
+      "driver_number": 3,
+      "name_acronym": "VER",
+      "team_name": "Red Bull Racing",
+      "duration": 94.214,
+      "number_of_laps": null
+    },
+    {
+      "position": 3,
+      "driver_number": 6,
+      "name_acronym": "HAD",
+      "team_name": "Red Bull Racing",
+      "duration": 94.25,
+      "number_of_laps": null
+    },
+    {
+      "position": 4,
+      "driver_number": 16,
+      "name_acronym": "LEC",
+      "team_name": "Ferrari",
+      "duration": 94.267,
+      "number_of_laps": null
+    },
+    {
+      "position": 5,
+      "driver_number": 44,
+      "name_acronym": "HAM",
+      "team_name": "Ferrari",
+      "duration": 94.311,
+      "number_of_laps": null
+    },
+    {
+      "position": 6,
+      "driver_number": 63,
+      "name_acronym": "RUS",
+      "team_name": "Mercedes",
+      "duration": 94.476,
+      "number_of_laps": null
+    },
+    {
+      "position": 7,
+      "driver_number": 81,
+      "name_acronym": "PIA",
+      "team_name": "McLaren",
+      "duration": 94.803,
+      "number_of_laps": null
+    },
+    {
+      "position": 8,
+      "driver_number": 1,
+      "name_acronym": "NOR",
+      "team_name": "McLaren",
+      "duration": 95.049,
+      "number_of_laps": null
+    },
+    {
+      "position": 9,
+      "driver_number": 30,
+      "name_acronym": "LAW",
+      "team_name": "Racing Bulls",
+      "duration": null,
+      "number_of_laps": null
+    },
+    {
+      "position": 10,
+      "driver_number": 10,
+      "name_acronym": "GAS",
+      "team_name": "Alpine",
+      "duration": 95.08,
+      "number_of_laps": null
+    },
+    {
+      "position": 11,
+      "driver_number": 27,
+      "name_acronym": "HUL",
+      "team_name": "Audi",
+      "duration": 95.158,
+      "number_of_laps": null
+    },
+    {
+      "position": 12,
+      "driver_number": 14,
+      "name_acronym": "ALO",
+      "team_name": "Aston Martin",
+      "duration": 95.818,
+      "number_of_laps": null
+    },
+    {
+      "position": 13,
+      "driver_number": 87,
+      "name_acronym": "BEA",
+      "team_name": "Haas F1 Team",
+      "duration": 96.031,
+      "number_of_laps": null
+    },
+    {
+      "position": 14,
+      "driver_number": 41,
+      "name_acronym": "LIN",
+      "team_name": "Racing Bulls",
+      "duration": 96.049,
+      "number_of_laps": null
+    },
+    {
+      "position": 15,
+      "driver_number": 31,
+      "name_acronym": "OCO",
+      "team_name": "Haas F1 Team",
+      "duration": 96.531,
+      "number_of_laps": null
+    },
+    {
+      "position": 16,
+      "driver_number": 18,
+      "name_acronym": "STR",
+      "team_name": "Aston Martin",
+      "duration": 96.677,
+      "number_of_laps": null
+    },
+    {
+      "position": 17,
+      "driver_number": 55,
+      "name_acronym": "SAI",
+      "team_name": "Williams",
+      "duration": 96.77,
+      "number_of_laps": null
+    },
+    {
+      "position": 18,
+      "driver_number": 23,
+      "name_acronym": "ALB",
+      "team_name": "Williams",
+      "duration": 96.967,
+      "number_of_laps": null
+    },
+    {
+      "position": 19,
+      "driver_number": 11,
+      "name_acronym": "PER",
+      "team_name": "Cadillac",
+      "duration": 97.433,
+      "number_of_laps": null
+    },
+    {
+      "position": 20,
+      "driver_number": 77,
+      "name_acronym": "BOT",
+      "team_name": "Cadillac",
+      "duration": 97.523,
+      "number_of_laps": null
+    },
+    {
+      "position": 21,
+      "driver_number": 43,
+      "name_acronym": "COL",
+      "team_name": "Alpine",
+      "duration": 95.722,
+      "number_of_laps": null
+    },
+    {
+      "position": 22,
+      "driver_number": 5,
+      "name_acronym": "BOR",
+      "team_name": "Audi",
+      "duration": 95.691,
+      "number_of_laps": null
+    }
+  ],
+  "starting_grid_file": {
+    "path": "data\\weekends\\2026-united-states\\starting_grid.source.json",
+    "sha256": "d89e545f696f5554e4517e105497b8eed6d27a4f7b0b81ad16269782f81f7c27"
+  },
+  "grid_status": "published starting grid",
+  "calibration": {
+    "degrade_rate": {
+      "0": 0.11107,
+      "1": 0.11317,
+      "2": 0.07963
+    },
+    "cliff_lap": {
+      "0": 22,
+      "1": 32,
+      "2": 42
+    },
+    "compound_evidence": {
+      "SOFT": {
+        "clean_laps": 83,
+        "usable_stints": 10,
+        "drivers": [
+          "10",
+          "12",
+          "16",
+          "23",
+          "3",
+          "43",
+          "44",
+          "55",
+          "77",
+          "87"
+        ],
+        "observed_slope_s_per_lap": 0.12060416666666551,
+        "prior_weight": 0.333,
+        "source": "practice-with-prior"
+      },
+      "MEDIUM": {
+        "clean_laps": 85,
+        "usable_stints": 10,
+        "drivers": [
+          "10",
+          "12",
+          "16",
+          "30",
+          "31",
+          "41",
+          "43",
+          "5",
+          "6"
+        ],
+        "observed_slope_s_per_lap": 0.14100238095238068,
+        "prior_weight": 0.333,
+        "source": "practice-with-prior"
+      },
+      "HARD": {
+        "clean_laps": 42,
+        "usable_stints": 5,
+        "drivers": [
+          "1",
+          "10",
+          "14",
+          "18",
+          "43"
+        ],
+        "observed_slope_s_per_lap": 0.12476666666666625,
+        "prior_weight": 0.5,
+        "source": "practice-with-prior"
+      }
+    },
+    "note": "Within-stint practice pace is confounded by fuel and traffic; cliffs are priors."
+  },
+  "rows": 1799,
+  "failures": [],
+  "sources": [
+    "https://www.formula1.com/en/racing/2026/united-states",
+    "https://www.formula1.com/en/results/2026/races/1297/united-states/qualifying",
+    "https://api.openf1.org/v1/sessions?meeting_key=1297",
+    "https://api.openf1.org/v1/starting_grid?meeting_key=1297"
+  ],
+  "status": "complete",
+  "cutoff_note": "as_of selects finished sessions; classifications reflect fetch-time revisions.",
+  "track": [
+    [
+      -1082,
+      -584
+    ],
+    [
+      -679,
+      -892
+    ],
+    [
+      184,
+      -1554
+    ],
+    [
+      407,
+      -1725
+    ],
+    [
+      982,
+      -2164
+    ],
+    [
+      1286,
+      -2397
+    ],
+    [
+      1773,
+      -2769
+    ],
+    [
+      2134,
+      -3046
+    ],
+    [
+      2546,
+      -3367
+    ],
+    [
+      2922,
+      -3662
+    ],
+    [
+      3126,
+      -3835
+    ],
+    [
+      3371,
+      -4020
+    ],
+    [
+      3567,
+      -4073
+    ],
+    [
+      3773,
+      -3978
+    ],
+    [
+      3813,
+      -3839
+    ],
+    [
+      3808,
+      -3757
+    ],
+    [
+      3783,
+      -3567
+    ],
+    [
+      3759,
+      -3455
+    ],
+    [
+      3676,
+      -3229
+    ],
+    [
+      3527,
+      -2908
+    ],
+    [
+      3415,
+      -2623
+    ],
+    [
+      3379,
+      -2496
+    ],
+    [
+      3354,
+      -1929
+    ],
+    [
+      3471,
+      -1565
+    ],
+    [
+      3701,
+      -1225
+    ],
+    [
+      4070,
+      -932
+    ],
+    [
+      4414,
+      -741
+    ],
+    [
+      4821,
+      -521
+    ],
+    [
+      5208,
+      -232
+    ],
+    [
+      5561,
+      223
+    ],
+    [
+      5823,
+      654
+    ],
+    [
+      6148,
+      929
+    ],
+    [
+      6490,
+      1120
+    ],
+    [
+      6724,
+      1552
+    ],
+    [
+      6802,
+      1881
+    ],
+    [
+      7014,
+      2304
+    ],
+    [
+      7341,
+      2577
+    ],
+    [
+      7629,
+      2715
+    ],
+    [
+      8033,
+      2744
+    ],
+    [
+      8416,
+      2613
+    ],
+    [
+      8692,
+      2466
+    ],
+    [
+      8948,
+      2367
+    ],
+    [
+      9433,
+      2410
+    ],
+    [
+      9651,
+      2556
+    ],
+    [
+      9928,
+      2870
+    ],
+    [
+      10056,
+      3014
+    ],
+    [
+      10297,
+      3218
+    ],
+    [
+      10553,
+      3269
+    ],
+    [
+      10718,
+      3237
+    ],
+    [
+      10957,
+      3089
+    ],
+    [
+      11178,
+      2882
+    ],
+    [
+      11519,
+      2814
+    ],
+    [
+      11808,
+      2845
+    ],
+    [
+      12077,
+      2903
+    ],
+    [
+      12444,
+      2998
+    ],
+    [
+      12831,
+      3125
+    ],
+    [
+      13158,
+      3278
+    ],
+    [
+      13484,
+      3532
+    ],
+    [
+      13886,
+      3997
+    ],
+    [
+      14170,
+      4352
+    ],
+    [
+      14429,
+      4667
+    ],
+    [
+      14706,
+      5008
+    ],
+    [
+      15039,
+      5416
+    ],
+    [
+      15175,
+      5580
+    ],
+    [
+      15416,
+      5857
+    ],
+    [
+      15566,
+      6128
+    ],
+    [
+      15573,
+      6284
+    ],
+    [
+      15533,
+      6352
+    ],
+    [
+      15391,
+      6426
+    ],
+    [
+      15282,
+      6436
+    ],
+    [
+      15116,
+      6420
+    ],
+    [
+      14824,
+      6344
+    ],
+    [
+      14590,
+      6258
+    ],
+    [
+      14401,
+      6189
+    ],
+    [
+      14056,
+      6064
+    ],
+    [
+      13646,
+      5921
+    ],
+    [
+      13317,
+      5808
+    ],
+    [
+      12880,
+      5670
+    ],
+    [
+      12471,
+      5553
+    ],
+    [
+      11879,
+      5391
+    ],
+    [
+      11509,
+      5296
+    ],
+    [
+      10942,
+      5155
+    ],
+    [
+      10347,
+      5018
+    ],
+    [
+      9845,
+      4909
+    ],
+    [
+      9231,
+      4786
+    ],
+    [
+      8750,
+      4696
+    ],
+    [
+      7968,
+      4561
+    ],
+    [
+      7726,
+      4522
+    ],
+    [
+      7204,
+      4456
+    ],
+    [
+      6392,
+      4371
+    ],
+    [
+      5930,
+      4326
+    ],
+    [
+      5261,
+      4259
+    ],
+    [
+      4940,
+      4227
+    ],
+    [
+      4556,
+      4192
+    ],
+    [
+      4213,
+      4136
+    ],
+    [
+      4099,
+      4069
+    ],
+    [
+      3993,
+      3916
+    ],
+    [
+      4007,
+      3735
+    ],
+    [
+      4059,
+      3620
+    ],
+    [
+      4159,
+      3471
+    ],
+    [
+      4356,
+      3264
+    ],
+    [
+      4464,
+      3163
+    ],
+    [
+      4739,
+      2894
+    ],
+    [
+      4935,
+      2642
+    ],
+    [
+      5028,
+      2350
+    ],
+    [
+      5022,
+      2228
+    ],
+    [
+      4927,
+      2040
+    ],
+    [
+      4791,
+      1948
+    ],
+    [
+      4607,
+      1933
+    ],
+    [
+      4401,
+      1971
+    ],
+    [
+      4282,
+      2033
+    ],
+    [
+      4059,
+      2253
+    ],
+    [
+      3951,
+      2440
+    ],
+    [
+      3767,
+      2774
+    ],
+    [
+      3569,
+      2994
+    ],
+    [
+      3364,
+      3138
+    ],
+    [
+      3162,
+      3187
+    ],
+    [
+      3006,
+      3157
+    ],
+    [
+      2872,
+      3059
+    ],
+    [
+      2831,
+      2962
+    ],
+    [
+      2852,
+      2813
+    ],
+    [
+      2942,
+      2640
+    ],
+    [
+      3049,
+      2489
+    ],
+    [
+      3234,
+      2251
+    ],
+    [
+      3408,
+      2038
+    ],
+    [
+      3623,
+      1676
+    ],
+    [
+      3688,
+      1455
+    ],
+    [
+      3727,
+      995
+    ],
+    [
+      3572,
+      507
+    ],
+    [
+      3369,
+      252
+    ],
+    [
+      2987,
+      32
+    ],
+    [
+      2592,
+      -75
+    ],
+    [
+      2110,
+      -37
+    ],
+    [
+      1699,
+      110
+    ],
+    [
+      1312,
+      386
+    ],
+    [
+      1046,
+      734
+    ],
+    [
+      865,
+      1061
+    ],
+    [
+      584,
+      1482
+    ],
+    [
+      262,
+      1785
+    ],
+    [
+      -29,
+      1905
+    ],
+    [
+      -233,
+      1907
+    ],
+    [
+      -702,
+      1755
+    ],
+    [
+      -967,
+      1630
+    ],
+    [
+      -1293,
+      1479
+    ],
+    [
+      -1768,
+      1285
+    ],
+    [
+      -2103,
+      1143
+    ],
+    [
+      -2312,
+      1035
+    ],
+    [
+      -2484,
+      879
+    ],
+    [
+      -2554,
+      707
+    ],
+    [
+      -2498,
+      506
+    ],
+    [
+      -2428,
+      407
+    ],
+    [
+      -2252,
+      233
+    ],
+    [
+      -2089,
+      114
+    ],
+    [
+      -1768,
+      -89
+    ],
+    [
+      -1618,
+      -185
+    ],
+    [
+      -1385,
+      -350
+    ]
+  ],
+  "track_file": {
+    "path": "data\\weekends\\2026-united-states\\track.source.json",
+    "sha256": "964143e98d4a56b948ed44eb4d2315d9f9c7ba18de88a75f7238a1c42991977f",
+    "source": "OpenF1 completed practice/qualifying GPS at this meeting"
+  }
+}

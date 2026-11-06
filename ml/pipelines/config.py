@@ -40,6 +40,15 @@ class TrainingConfig(BaseModel):
     min_spearman: float = Field(default=0.7, ge=0.7, le=1.0)
     learning_rate: float = Field(default=3e-4, gt=0)
     finetune_learning_rate: float = Field(default=5e-5, gt=0)
+    iql_epochs: int = Field(default=60, ge=1)
+    iql_finetune_epochs: int = Field(default=20, ge=1)
+    iql_expectile: float = Field(default=0.7, gt=0.5, lt=1.0)
+    iql_temperature: float = Field(default=3.0, gt=0)
+    iql_discount: float = Field(default=0.995, gt=0, le=1.0)
+    iql_hidden_dim: int = Field(default=128, ge=32)
+    iql_layers: int = Field(default=2, ge=1, le=6)
+    iql_heads: int = Field(default=4, ge=1)
+    iql_eval_interval: int = Field(default=5, ge=1)
     device: Literal["auto", "cpu", "cuda"] = "auto"
     tracking_uri: str | None = "sqlite:///runs/mlflow.db"
 
@@ -53,6 +62,8 @@ class TrainingConfig(BaseModel):
             raise ValueError("Fine-tuning validation must precede test events")
         if self.rollout_steps * self.n_envs % self.batch_size:
             raise ValueError("batch_size must divide rollout_steps * n_envs")
+        if self.iql_hidden_dim % self.iql_heads:
+            raise ValueError("iql_heads must divide iql_hidden_dim")
         return self
 
     @classmethod
