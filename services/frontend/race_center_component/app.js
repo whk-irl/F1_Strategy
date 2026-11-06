@@ -42,7 +42,10 @@ function render(payload){
   txt('round-title',`FORMULA 1 / ${m.year} SEASON`);txt('total-laps',payload.mode==='live'&&!race.distance_confirmed?'/ —':`/ ${race.total_laps}`);txt('map-name',m.circuit_short_name.toUpperCase());txt('map-location',m.circuit_short_name.toUpperCase());
   txt('map-source',payload.mode==='live'?(race.capabilities?.position===false?'STATIC CIRCUIT · LIVE GPS UNAVAILABLE':'DELAYED GPS · 15s REFRESH'):'RECORDED GPS · INTERPOLATED');
   $('track-canvas').setAttribute('aria-label',race.capabilities?.position===false?'Static circuit map; live car positions unavailable':'Circuit map with recorded car positions');
-  document.querySelector('.strategy-badge').textContent=payload.mode==='live'?'SHADOW TEST':'RACE MODEL';
+  const engine=payload.strategy_engine||'reference',held=(key,label)=>engine===key&&!payload.strategy_available?label+' · unavailable':label;
+  setOptions('strategy-engine',[['reference','Reference'],['advisor',held('advisor','Strategy advisor')],['ensemble',held('ensemble','Ensemble · opt-in')]],engine);
+  state.planKey=null;
+  document.querySelector('.strategy-badge').textContent={advisor:'ADVISOR',ensemble:'ENSEMBLE · OPT-IN'}[engine]||(payload.mode==='live'?'SHADOW TEST':'RACE MODEL');
   document.querySelector('.strategy-footnote').textContent=race.capabilities?.position===false?`Experimental local shadow test. Historical measured pit loss and practice-informed tyres guide the nominal plan. Live GPS, car telemetry and measured pit-lane times are unavailable. Rejoin uses current gaps; future rival traffic is unknown.${race.capture_ok===false?' Local capture failed; check server storage.':''}`:'Recommendation combines measured pit loss, tyre age, race state, nearby gaps, rival tyres and recent stops. Rejoin outcomes are ranges, not guarantees. The dry-race dynamic program is a research reference.';
   document.querySelector('footer span:nth-child(2)').textContent=race.capabilities?.position===false?'Data: public F1 timing via FastF1 · Experimental local test · Unofficial':'Data: OpenF1 · Independent research project · Unofficial';
   txt('timeline-note',race.capabilities?.position===false?'Timing samples · no live GPS':'Actual positions · smooth playback');
@@ -215,7 +218,71 @@ function recordStrategy(action,lap,stopLap,fit,pitLoss,rejoin,sampleAge){
   state.lastStrategyRecord={key,at:now};
   post('streamlit:setComponentValue',{value:{action:'strategy_record',nonce:Date.now()+Math.random(),value:{session_key:state.race.id,driver:state.driver,lap,t:state.t,action,stop_lap:stopLap,fit,pit_loss_s:pitLoss,rejoin_position:rejoin,sample_age_s:sampleAge,input_updated_at:state.race.updated_at,source:state.race.capabilities?.position===false?'free':'openf1'}},dataType:'json'});
 }
+const MODEL_ENGINES=['advisor','ensemble'];
+const ADVISOR_NOTES={advisor:'Released strategy advisor: exact dynamic programming on field-estimated tyre wear and measured pit loss, using laps through the previous lap. Dry races only; traffic and track position are not modelled. Option values are the planner\'s expected remaining strategy time versus the best option.',ensemble:'Opt-in frozen ensemble (candidate 7e8800ab93b81c68). It did not pass the pre-registered 2026 test gate and is not the released default. Option values are the planner\'s, shown for comparison.'};
+function selectModelRecord(records,driver,completed,t=null){
+  // Exact next-lap lookup: never use a later call or any uncompleted history.
+  if(!Number.isInteger(completed)||completed<0)return null;
+  const eligible=(Array.isArray(records)?records:[]).filter(row=>{
+    if(!row||typeof row!=='object')return false;
+    const cutoff=row.input_cutoff_lap,done=row.completed_lap;
+    return Number(row.driver)===Number(driver)&&Number(row.lap)===completed+1&&
+      Number.isInteger(cutoff)&&cutoff>=0&&cutoff<=completed&&
+      (done==null||(Number.isInteger(done)&&done>=0&&done<=completed))&&
+      (t==null||row.input_cutoff_t==null||(typeof row.input_cutoff_t==='number'&&row.input_cutoff_t<=t));
+  });
+  return eligible.at(-1)||null;
+}
+function renderModelCandidates(record,valid){
+  const container=$('model-candidates');container.replaceChildren();
+  const candidates=valid&&Array.isArray(record.candidates)?record.candidates.map(row=>({label:String(row.label??''),cost:numericGap(row.cost_s)})):[];
+  const costs=candidates.map(row=>row.cost).filter(value=>value!=null),best=costs.length?Math.min(...costs):null;
+  if(!candidates.length){const p=document.createElement('p');p.className='model-empty';p.textContent=valid?'No option comparison was supplied with this call.':'Option comparison held until a valid call is available.';container.append(p);return;}
+  for(const row of candidates){
+    const card=document.createElement('div');card.className=`scenario-card${row.cost!=null&&row.cost===best?' preferred':''}`;
+    const label=document.createElement('span');label.textContent=row.label;
+    const value=document.createElement('b');value.textContent=row.cost==null?'—':`+${fixed(row.cost-best,2)} s`;
+    const detail=document.createElement('small');detail.textContent=row.cost==null?'Cost unavailable':'vs best option';
+    card.append(label,value,detail);container.append(card);
+  }
+}
+function updateModelStrategy(){
+  const data=state.payload.strategy_model,engine=state.payload.strategy_engine,completed=completedLap(state.driver)?.[2]||0;
+  const record=selectModelRecord(data?.records,state.driver,completed,state.t);
+  const calls={pit_now:'Box this lap',stay_out:'Stay out',run_to_flag:'Run to the flag'};
+  const valid=!!record&&!!calls[record.action]&&record.decision_valid!==false;
+  let ready=0;
+  for(const d of state.race.drivers){const row=selectModelRecord(data?.records,d.driver_number,completedLap(d.driver_number)?.[2]||0,state.t);if(row&&calls[row.action]&&row.decision_valid!==false)ready++;}
+  const key=JSON.stringify(['model',engine,state.driver,completed,record,ready,!!data]);if(state.planKey===key)return;state.planKey=key;
+  $('strategy-model-info').hidden=false;$('model-candidates').hidden=false;$('model-candidate-heading').hidden=false;$('model-candidate-note').hidden=false;
+  document.querySelector('.strategy-scenarios').hidden=true;$('plan-bar').replaceChildren();
+  txt('strategy-call-label',engine==='ensemble'?'PRIMARY CALL · ENSEMBLE (OPT-IN)':'PRIMARY CALL · STRATEGY ADVISOR');
+  txt('model-candidate-engine','Exact DP planner');
+  txt('model-candidate-note',engine==='ensemble'?'Planner values shown for comparison; the ensemble makes this call. Values are expected remaining strategy time, not observed gains.':'The same planner that makes the call; values are expected remaining strategy time, not observed gains.');
+  txt('strategy-model-name',record?.model||(engine==='ensemble'?'Strategy advisor · ensemble (opt-in)':'Strategy advisor · planner'));
+  const version=record?.model_version||data?.model_version,cutoff=record?.input_cutoff_lap;
+  txt('strategy-model-evidence',`Recorded-race replay${cutoff==null?'':` · inputs through lap ${cutoff}`}${version?' · '+version:''}`);
+  txt('strategy-coverage',data?`${state.race.drivers.length} cars · ${ready} calls at this playhead`:'No advisor calls loaded');
+  const finished=completed>=state.race.total_laps;
+  txt('strategy-action',finished?'Race complete':valid?calls[record.action]:'Call unavailable');
+  txt('strategy-detail',valid?(record.reason||'Advisor call for this driver and lap.'):finished?'No further pit decision is needed.':record?.reason||state.payload.strategy_model_error||'No advisor call exists yet for this driver and completed lap.');
+  txt('pit-window',valid?(record.stop_lap==null?(record.action==='run_to_flag'?'TO FLAG':'—'):`LAP ${record.stop_lap}`):'—');
+  txt('next-compound',valid?(record.fit||'—'):'—');txt('rejoin-position','—');
+  txt('pit-loss',record?.pit_loss_s==null?'—':`${fixed(record.pit_loss_s)}s`);
+  txt('pit-range',record?.pit_loss_s==null?'No pit-loss estimate was supplied with this call.':'Pit loss measured against cars that did not stop, from laps completed so far in this race.');
+  txt('pit-risk','Rejoin position and traffic are not modelled by the advisor.');$('pit-risk').classList.add('warning');
+  const rivals=$('strategy-rivals');rivals.replaceChildren();const note=document.createElement('p');note.className='model-empty';note.textContent='Rival responses are not modelled by the advisor.';rivals.append(note);txt('rival-summary','Not modelled');
+  renderModelCandidates(record,valid);
+  document.querySelector('.strategy-footnote').textContent=ADVISOR_NOTES[engine];
+  height();
+}
+function resetReferencePanel(){
+  $('strategy-model-info').hidden=true;$('model-candidates').hidden=true;$('model-candidate-heading').hidden=true;$('model-candidate-note').hidden=true;
+  document.querySelector('.strategy-scenarios').hidden=false;txt('strategy-call-label','PRIMARY CALL');
+}
 function updateStrategy(compound,age,lap,history,flag,weather){
+  if(MODEL_ENGINES.includes(state.payload.strategy_engine)){updateModelStrategy();return;}
+  resetReferencePanel();
   const distanceKnown=state.payload.mode!=='live'||state.race.distance_confirmed;
   const finished=distanceKnown&&(completedLap(state.driver)?.[2]||0)>=state.race.total_laps;
   const dry=['SOFT','MEDIUM','HARD'],remaining=finished?0:Math.max(0,state.race.total_laps-lap+1),forecast=pitForecast(flag),pitLoss=forecast?.net;
@@ -306,6 +373,7 @@ $('playback-speed').onchange=e=>{state.speed=Number(e.target.value);save();};
 $('labels').onclick=()=>{state.labels=!state.labels;$('labels').classList.toggle('active',state.labels);$('labels').setAttribute('aria-pressed',String(state.labels));drawTrack();save();};
 $('focus').onclick=()=>{state.follow=!state.follow;$('focus').classList.toggle('active',state.follow);$('focus').setAttribute('aria-pressed',String(state.follow));drawTrack();save();};
 $('reset-map').onclick=()=>{state.follow=false;$('focus').classList.remove('active');$('focus').setAttribute('aria-pressed','false');drawTrack();save();};
+$('strategy-engine').onchange=e=>send('strategy_engine',e.target.value);
 $('session').onchange=e=>send('session',Number(e.target.value));$('season').onchange=e=>send('year',Number(e.target.value));
 $('live-mode').onclick=()=>send('mode','live');$('replay-mode').onclick=()=>send('mode','replay');$('return-replay').onclick=()=>send('mode','replay');$('retry').onclick=()=>send('mode',state.payload.mode);$('lab').onclick=()=>send('lab',true);
 $('data-note').onclick=()=>$('about-dialog').showModal();$('close-dialog').onclick=()=>$('about-dialog').close();

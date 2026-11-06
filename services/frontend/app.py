@@ -12,7 +12,7 @@ from dotenv import load_dotenv
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 load_dotenv()
 
-_RELEASE = "2026-10-24-usgp-live-test"
+_RELEASE = "2026-11-06-strategy-advisor"
 
 
 def _refresh_release_modules() -> None:

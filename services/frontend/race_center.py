@@ -48,6 +48,57 @@ def _telemetry(key: int, driver: int, origin: str, duration: float) -> list[list
     return load_telemetry(_feed(), key, driver, origin, duration)
 
 
+ADVISOR_ENGINES = ("advisor", "ensemble")
+_ADVISOR_RECORDS: dict[tuple[int, str], dict[str, Any]] = {}
+_ADVISOR_CACHE_RACES = 8
+
+
+@st.cache_resource(show_spinner=False)
+def _strategy_advisor(engine: str) -> Any:
+    """The default planner engine never imports PyTorch or loads ensemble weights."""
+    import json
+
+    from ml.strategy_serving.advisor import SERVING_CONFIG, StrategyAdvisor
+
+    if engine == "ensemble":
+        return StrategyAdvisor.from_config()
+    return StrategyAdvisor(Path(json.loads(SERVING_CONFIG.read_text())["priors"]))
+
+
+def _load_advisor_strategy(race: dict[str, Any], engine: str) -> dict[str, Any]:
+    """Per-lap advisor calls for a recorded race (docs/model-cards/strategy-advisor-v1.md)."""
+    from services.live.advisor_strategy import advisor_records
+
+    key = (int(race["id"]), engine)
+    if key not in _ADVISOR_RECORDS:
+        if len(_ADVISOR_RECORDS) >= _ADVISOR_CACHE_RACES:
+            _ADVISOR_RECORDS.pop(next(iter(_ADVISOR_RECORDS)))
+        _ADVISOR_RECORDS[key] = advisor_records(race, _strategy_advisor(engine), engine)  # type: ignore[arg-type]
+    return _ADVISOR_RECORDS[key]
+
+
+def _attach_strategy_payload(payload: dict[str, Any]) -> None:
+    """Attach advisor calls for recorded races; an unavailable engine never falls back."""
+    engine = st.session_state.get("rc_strategy_engine", "reference")
+    if engine not in ADVISOR_ENGINES:
+        payload["strategy_engine"] = "reference"
+        return
+    model = None
+    if payload.get("mode") != "replay":
+        payload["strategy_model_error"] = (
+            "The strategy advisor runs on recorded races only; live use is not yet validated."
+        )
+    elif payload.get("race"):
+        try:
+            model = _load_advisor_strategy(payload["race"], engine)
+        except Exception as error:  # the UI shows a held call, never a stack trace
+            payload["strategy_model_error"] = "The strategy advisor is unavailable."
+            payload["strategy_model_error_code"] = type(error).__name__
+    payload["strategy_model"] = model
+    payload["strategy_available"] = model is not None
+    payload["strategy_engine"] = engine
+
+
 def _handle(event: Any) -> None:
     if not isinstance(event, dict) or st.session_state.get("rc_event") == event.get("nonce"):
         return
@@ -67,6 +118,8 @@ def _handle(event: Any) -> None:
         st.session_state.rc_mode = value
     elif action == "lab":
         st.session_state.workspace = "lab"
+    elif action == "strategy_engine" and value in ("reference", *ADVISOR_ENGINES):
+        st.session_state.rc_strategy_engine = value
     else:
         return
     st.rerun()
@@ -207,6 +260,7 @@ def render_race_center() -> None:
                 "title": "The feed is taking a pit stop.",
                 "detail": f"{error}. Switch to a recorded race or retry the connection.",
             }
+        _attach_strategy_payload(payload)
         event = _component(payload=payload, key="race_center", default=None)
         _handle(event)
 

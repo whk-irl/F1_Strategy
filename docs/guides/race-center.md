@@ -105,6 +105,51 @@ The [retraining model card](../model-cards/2026-10-16-pit-time-retraining.md) re
 BC → PPO → fine-tuning result and why the new checkpoint was not promoted.
 Strategy Lab continues to expose the baked model experiments separately.
 
+## Strategy advisor engines
+
+The **Strategy engine** menu in Strategy command adds two engines to the in-browser
+Reference plan (docs/model-cards/strategy-advisor-v1.md):
+
+- **Strategy advisor** — the released planner: exact dynamic programming on tyre
+  wear estimated from the field's laps and measured pit loss.
+- **Ensemble · opt-in** — the frozen PPO ensemble `7e8800ab93b81c68`. It did not
+  pass the pre-registered 2026 test gate and is not the default.
+
+Calls are computed from the recorded race's own OpenF1 laps, stints, pits and
+race control (`services/live/advisor_strategy.py`, about 1.3 s per race, cached
+per race). A call for lap L uses laps through L−1, as in evaluation. Option cards
+show each choice's expected remaining strategy time versus the best; a gap under
+0.5 s is described as a near tie. In ensemble mode the cards remain the
+planner's, and disagreements are named in the call text.
+
+Recorded races only: in live mode both engines show a hold rather than a call,
+because the advisor has not been validated on live feeds. Dry races only; traffic
+and track position are not modelled. The default engine is unchanged (Reference).
+
+Parity check, 2026 US GP: calls from the Race Center bundle match the advisor run
+on the evaluated dataset in 99.83% of 1,163 car-laps (median pit-saving difference
+0.02 s).
+
+### Live shadow mode (advisor)
+
+Live mode keeps the advisor on hold until `configs/strategy-live-shadow-v1.json`
+passes on two untouched races. To record silently during a race, start this next to
+the free timing collector **before lights out** and stop it after the flag:
+
+    python -m services.live.advisor_shadow watch --out data/live/<session_key>/advisor-shadow.jsonl
+
+After the race, once the replay bundle is cached by opening the race in Race Center:
+
+    python -m services.live.advisor_shadow review --shadow data/live/<session_key>/advisor-shadow.jsonl \
+        --replay data/race_center/race-<session_key>-v3.json
+
+Live snapshots keep only each car's last two lap starts and no durations, publish
+stints with `lap_start` 0, and report new tyres 26–37 s into the out-lap. The
+accumulator rebuilds lap times, anchors stints on the observed tyre age, and waits
+45 s into each lap before calling. On the 2026 US GP capture (development race, so
+in-sample): 98.85% agreement with the post-race replay on clear calls, no pit calls
+on freshly fitted tyres, 88.5% coverage after recording began.
+
 ## Implementation and checks
 
 `services/live/race_data.py` provides cached, bounded requests and the shared replay/live
