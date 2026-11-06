@@ -1,0 +1,9 @@
+{
+  "default_mode": "planner",
+  "priors": "models_baked/strategy_priors.json",
+  "ensemble": {
+    "path": "models_baked/strategy-ensemble-armB",
+    "candidate_id": "7e8800ab93b81c68",
+    "status": "opt-in only: failed the pre-registered 2026 non-inferiority gate on power (-3.49 s/race, CI [-10.58,+5.04]); promotion decided once by configs/strategy-prospective-v1.json"
+  }
+}

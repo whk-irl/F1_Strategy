@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "purpose": "Single pre-registered promotion decision for the opt-in ensemble.",
+  "registered_utc": "2026-11-05T20:31:02+00:00",
+  "candidate_id": "7e8800ab93b81c68",
+  "frozen_record": "runs/strategy-loop-p2/loop/arm-B/FROZEN.json",
+  "at_registration": {
+    "rounds_2026_in_data": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18
+    ],
+    "prospective_rounds_seen": []
+  },
+  "unchanged_history_sha256": "084f218ad87574fce6f9cc5d8613cd48e693d8f21475a8f92fbc69af9fcc3981",
+  "history_scope": "all laps for seasons < 2026 and 2026 rounds 1-18",
+  "test_rows": {
+    "path": "runs/strategy-loop-p2/loop/arm-B/eval-test/per_car.csv",
+    "sha256": "f2ba34feaf750e589db18b50f68b1e2d07de2c0d3e0332dbe142eb5025792c26"
+  },
+  "prospective": {
+    "year": 2026,
+    "rounds_from": 19,
+    "filters": [
+      "dry",
+      "no_red_flag"
+    ]
+  },
+  "decision": {
+    "when": "Once, after the final 2026 round is ingested (decide --final-round N).",
+    "pool": "2026 test rounds 1-18 (saved rows above) + all usable prospective rounds 19..N",
+    "promote_ensemble_to_default_if": {
+      "illegal_share": 0.0,
+      "upper_ci95_ensemble_minus_planner_s_below": 1.0
+    },
+    "otherwise": "Planner stays default; candidate 7e8800ab93b81c68 is retired from opt-in.",
+    "statistics": "Race-cluster bootstrap, 4000 draws, seed 0 (ml.strategy.protocol.paired)."
+  },
+  "interim_looks": "Allowed for monitoring only (status command); each is logged; no decision may be taken from them.",
+  "no_changes": "Candidate weights, ml/strategy code, the training-loop config and the history rows must match; any mismatch voids the check."
+}
