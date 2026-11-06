@@ -1,0 +1,97 @@
+{
+  "schema_version": 1,
+  "plan": "docs/guides/strategy-training-loop-plan-20261105.md",
+  "baseline": {
+    "run": "runs/strategy-ppo-186536",
+    "served": "5-seed ensemble",
+    "val_minus_planner_s": -1.68,
+    "ci95": [
+      -3.49,
+      0.17
+    ]
+  },
+  "splits": {
+    "train": {
+      "years": [
+        2021,
+        2022,
+        2023
+      ],
+      "filters": [
+        "dry",
+        "no_red_flag"
+      ]
+    },
+    "validation": {
+      "years": [
+        2024,
+        2025
+      ],
+      "stress_replays_per_race": 20,
+      "stress_perturbations": {
+        "deg_scale": [
+          0.7,
+          1.3
+        ],
+        "pit_scale": [
+          0.8,
+          1.2
+        ],
+        "resample_sc": true
+      }
+    },
+    "test": {
+      "year": 2026,
+      "rounds": [
+        1,
+        18
+      ],
+      "single_use": true,
+      "sealed_rounds_from": 19
+    }
+  },
+  "training": {
+    "algorithm": "PPO",
+    "seeds": [
+      42,
+      11,
+      23,
+      67,
+      89
+    ],
+    "timesteps": 20000000,
+    "arms": [
+      "A_control",
+      "B_calibrated_noise",
+      "C_planner_kl",
+      "D_uncertainty_obs"
+    ]
+  },
+  "selection": {
+    "split": "validation",
+    "max_seed_spread_s": 1.0,
+    "metric": "ensemble_minus_planner_s"
+  },
+  "release_gates": {
+    "illegal_share": 0.0,
+    "noninferiority_upper_ci_s": 1.0,
+    "robustness_max_worse_than_planner_s": 1.0,
+    "mean_stops_range": [
+      1,
+      3
+    ],
+    "decision_latency_ms": 50,
+    "sc_races_noninferiority_upper_ci_s": 1.0,
+    "sc_stop_share_reported_not_gated": true
+  },
+  "amendments": [
+    {
+      "date": "2026-11-05",
+      "approved_by": "user (explicit choice: amend gate, then test)",
+      "change": "Replaced behaviour gate 'share of stops under SC/VSC >= planner' with the outcome it protects: upper 95% race-bootstrap CI of (ensemble - planner) on validation races with >=1 SC/VSC lap < +1.0 s. SC stop share is still reported.",
+      "reason": "Arm B failed the proxy (12.4% vs 27.2% of stops under SC/VSC) while being fastest exactly in SC/VSC races (-4.49 s/race [-10.27,-0.65] with 1-4 neutral laps; -1.25 s [-5.04,+2.23] with 5+).",
+      "made_after_seeing_validation": true,
+      "test_split_untouched_at_amendment": true
+    }
+  ]
+}
