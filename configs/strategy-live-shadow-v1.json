@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "purpose": "Gate for enabling the strategy advisor in Race Center live mode.",
+  "registered": "2026-11-05",
+  "development_race": {
+    "session_key": 11396,
+    "note": "2026 US GP capture used to build and tune the live accumulator (45 s stint-feed hold); in-sample, cannot qualify live mode.",
+    "result": {"clear_call_agreement": 0.9885, "same_pit_or_stay": 0.9382, "pit_on_just_fitted_tyres": 0, "reachable_coverage": 0.885, "median_pit_saves_diff_s": 0.96}
+  },
+  "qualification": {
+    "races": "Next untouched live races recorded with `python -m services.live.advisor_shadow watch` from before lights out; no code or threshold change after recording starts.",
+    "per_race_gates": {
+      "clear_call_agreement_min": 0.97,
+      "clear_call_definition": "post-race replay |pit_saves_s| >= 1.0 s",
+      "pit_on_just_fitted_tyres_max": 0,
+      "reachable_coverage_min": 0.85
+    },
+    "races_required": 2,
+    "on_pass": "Enable advisor/ensemble engines in Race Center live mode (remove the replay-only hold).",
+    "on_fail": "Keep live mode held; diagnose on that race, then require two further untouched races."
+  }
+}

@@ -2,7 +2,7 @@
 # Keep in sync with pyproject.toml — this file exists only for Streamlit Cloud
 # which cannot use uv's [[tool.uv.index]] CUDA source for torch.
 
-fastf1>=3.3
+fastf1>=3.8.3
 pandas>=2.2
 pyarrow>=15.0
 numpy>=1.26
